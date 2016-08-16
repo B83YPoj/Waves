@@ -13,16 +13,17 @@ import scorex.app.RunnableApplication
 import scorex.consensus.mining.BlockGeneratorController._
 import scorex.network.BlockchainSynchronizer
 import scorex.utils.ScorexLogging
-import scorex.waves.settings.Constants
+import com.wavesplatform.settings.Constants
 
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
 
 @Path("/node")
 @Api(value = "node")
-case class NodeApiRoute(override val application: RunnableApplication)(implicit val context: ActorRefFactory)
+case class NodeApiRoute(application: RunnableApplication)(implicit val context: ActorRefFactory)
   extends ApiRoute with CommonApiFunctions with ScorexLogging {
 
+  val settings = application.settings
   override lazy val route =
     pathPrefix("node") {
       stop ~ status ~ version

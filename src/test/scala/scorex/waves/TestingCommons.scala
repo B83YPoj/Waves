@@ -2,12 +2,14 @@ package scorex.waves
 
 import java.util.concurrent.atomic.AtomicInteger
 
-import com.wavesplatform.TestNetParams
+import com.ning.http.client.Response
+import com.wavesplatform.{Application, TestNetParams}
 import dispatch.{Http, url}
 import play.api.libs.json.{JsObject, JsValue, Json}
 import scorex.account.AddressScheme
 import scorex.transaction.TransactionSettings
 import scorex.utils._
+import com.wavesplatform.settings.WavesSettings
 
 import scala.concurrent.Await
 import scala.concurrent.ExecutionContext.Implicits.global
@@ -22,12 +24,12 @@ trait TestingCommons {
 }
 
 object TestingCommons {
+  AddressScheme.current = TestNetParams.addressScheme
   lazy val applications = {
     val apps = List(
-      new Application("settings-test.json") {
+      new Application(new WavesSettings("settings-test.json") {
         override lazy val chainParams = TestNetParams
-        AddressScheme.current = TestNetParams.addressScheme
-      }
+      })
     )
     apps.foreach(_.run())
     apps.foreach { a =>
@@ -78,4 +80,12 @@ object TestingCommons {
     Json.parse(response.getResponseBody)
   }
 
+  def postRequestWithResponse(us: String,
+                              params: Map[String, String] = Map.empty,
+                              body: String = "",
+                              headers: Map[String, String] = Map("api_key" -> "test"),
+                              peer: String = peerUrl(application)): Response = {
+    val request = Http(url(peer + us).POST << params <:< headers << body)
+    Await.result(request, 5.seconds)
+  }
 }

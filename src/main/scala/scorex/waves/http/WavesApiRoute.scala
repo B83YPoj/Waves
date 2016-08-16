@@ -13,16 +13,18 @@ import scorex.app.RunnableApplication
 import scorex.crypto.encode.Base58
 import scorex.transaction.LagonakiTransaction.ValidationResult
 import scorex.transaction.state.wallet.Payment
-import scorex.waves.settings.WavesSettings
+import com.wavesplatform.settings.WavesSettings
+import scorex.wallet.Wallet
 import scorex.waves.transaction.{ExternalPayment, SignedPayment, WavesTransactionModule}
-import scorex.waves.wallet.Wallet
 
 import scala.util.{Failure, Success, Try}
 
 @Path("/waves")
-@Api(value = "waves", description = "Waves specific commands.", position = 1)
-case class WavesApiRoute(override val application: RunnableApplication)(implicit val context: ActorRefFactory)
+@Api(value = "waves")
+case class WavesApiRoute(application: RunnableApplication)(implicit val context: ActorRefFactory)
   extends ApiRoute with CommonTransactionApiFunctions {
+
+  val settings = application.settings
 
   lazy val wallet = application.wallet
 
@@ -54,7 +56,6 @@ case class WavesApiRoute(override val application: RunnableApplication)(implicit
   ))
   @ApiResponses(Array(new ApiResponse(code = 200, message = "Json with response or error")))
   def payment: Route = path("payment") {
-    withCors {
       entity(as[String]) { body =>
         withAuth {
           postJsonRoute {
@@ -73,20 +74,12 @@ case class WavesApiRoute(override val application: RunnableApplication)(implicit
                               Base58.encode(tx.sender.publicKey), tx.sender.address, Base58.encode(tx.signature))
                             JsonResponse(Json.toJson(signed), StatusCodes.OK)
 
-                          case ValidationResult.InvalidAddress =>
-                            InvalidAddress.response
-
-                          case ValidationResult.NegativeAmount =>
-                            NegativeAmount.response
-
-                          case ValidationResult.NegativeFee =>
-                            NegativeFee.response
-
-                          case ValidationResult.NoBalance =>
-                            NoBalance.response
+                          case ValidationResult.InvalidAddress => InvalidAddress.response
+                          case ValidationResult.NegativeAmount => NegativeAmount.response
+                          case ValidationResult.InsufficientFee => InsufficientFee.response
+                          case ValidationResult.NoBalance => NoBalance.response
                         }
-                      case None =>
-                        InvalidSender.response
+                      case None => InvalidSender.response
                     }
                 }
               }.getOrElse(WrongJson.response)
@@ -94,7 +87,6 @@ case class WavesApiRoute(override val application: RunnableApplication)(implicit
           }
         }
       }
-    }
   }
 
   // TODO: Should be moved to Scorex
@@ -116,7 +108,6 @@ case class WavesApiRoute(override val application: RunnableApplication)(implicit
   ))
   @ApiResponses(Array(new ApiResponse(code = 200, message = "Json with response or error")))
   def signPayment: Route = path("payment" / "signature") {
-    withCors {
       entity(as[String]) { body =>
         withAuth {
           postJsonRoute {
@@ -135,20 +126,12 @@ case class WavesApiRoute(override val application: RunnableApplication)(implicit
                               Base58.encode(tx.sender.publicKey), tx.sender.address, Base58.encode(tx.signature))
                             JsonResponse(Json.toJson(signed), StatusCodes.OK)
 
-                          case ValidationResult.InvalidAddress =>
-                            InvalidAddress.response
-
-                          case ValidationResult.NegativeAmount =>
-                            NegativeAmount.response
-
-                          case ValidationResult.NegativeFee =>
-                            NegativeFee.response
-
-                          case ValidationResult.NoBalance =>
-                            NoBalance.response
+                          case ValidationResult.InvalidAddress => InvalidAddress.response
+                          case ValidationResult.NegativeAmount => NegativeAmount.response
+                          case ValidationResult.InsufficientFee => InsufficientFee.response
+                          case ValidationResult.NoBalance => NoBalance.response
                         }
-                      case None =>
-                        InvalidSender.response
+                      case None => InvalidSender.response
                     }
                 }
               }.getOrElse(WrongJson.response)
@@ -156,7 +139,6 @@ case class WavesApiRoute(override val application: RunnableApplication)(implicit
           }
         }
       }
-    }
   }
 
   @Path("/create-signed-payment")
@@ -179,39 +161,37 @@ case class WavesApiRoute(override val application: RunnableApplication)(implicit
     new ApiResponse(code = 200, message = "Json with response or error")
   ))
   def createdSignedPayment: Route = path("create-signed-payment") {
-    withCors {
-      entity(as[String]) { body =>
-        postJsonRoute {
-          Try(Json.parse(body)).map { js =>
-            js.validate[UnsignedPayment] match {
-              case err: JsError =>
-                WrongTransactionJson(err).response
-              case JsSuccess(payment: UnsignedPayment, _) =>
-                val senderWalletSeed = Base58.decode(payment.senderWalletSeed).getOrElse(Array.empty)
-                if (senderWalletSeed.isEmpty)
-                  WrongJson.response
-                else {
-                  val senderAccount = Wallet.generateNewAccount(senderWalletSeed, payment.senderAddressNonce)
-                  val recipientAccount = new Account(payment.recipient)
+    entity(as[String]) { body =>
+      postJsonRoute {
+        Try(Json.parse(body)).map { js =>
+          js.validate[UnsignedPayment] match {
+            case err: JsError =>
+              WrongTransactionJson(err).response
+            case JsSuccess(payment: UnsignedPayment, _) =>
+              val senderWalletSeed = Base58.decode(payment.senderWalletSeed).getOrElse(Array.empty)
+              if (senderWalletSeed.isEmpty)
+                WrongJson.response
+              else {
+                val senderAccount = Wallet.generateNewAccount(senderWalletSeed, payment.senderAddressNonce)
+                val recipientAccount = new Account(payment.recipient)
 
-                  transactionModule.createSignedPayment(senderAccount, recipientAccount,
-                    payment.amount, payment.fee, payment.timestamp) match {
-                    case Right(tx) =>
-                      val signature = Base58.encode(tx.signature)
-                      val senderPubKey = Base58.encode(tx.sender.publicKey)
-                      val signedTx = SignedPayment(tx.timestamp, tx.amount, tx.fee, tx.recipient.toString,
-                        senderPubKey, tx.sender.address, signature)
-                      JsonResponse(Json.toJson(signedTx), StatusCodes.OK)
+                transactionModule.createSignedPayment(senderAccount, recipientAccount,
+                  payment.amount, payment.fee, payment.timestamp) match {
+                  case Right(tx) =>
+                    val signature = Base58.encode(tx.signature)
+                    val senderPubKey = Base58.encode(tx.sender.publicKey)
+                    val signedTx = SignedPayment(tx.timestamp, tx.amount, tx.fee, tx.recipient.toString,
+                      senderPubKey, tx.sender.address, signature)
+                    JsonResponse(Json.toJson(signedTx), StatusCodes.OK)
 
-                    case Left(e) => e match {
-                      case ValidationResult.NoBalance => NoBalance.response
-                      case ValidationResult.InvalidAddress => InvalidAddress.response
-                    }
+                  case Left(e) => e match {
+                    case ValidationResult.NoBalance => NoBalance.response
+                    case ValidationResult.InvalidAddress => InvalidAddress.response
                   }
                 }
-            }
-          }.getOrElse(WrongJson.response)
-        }
+              }
+          }
+        }.getOrElse(WrongJson.response)
       }
     }
   }
@@ -221,18 +201,20 @@ case class WavesApiRoute(override val application: RunnableApplication)(implicit
     new ApiImplicitParam(name = "publicKey", value = "Public key as a plain string", required = true, paramType = "body", dataType = "String")
   ))
   @ApiOperation(value = "Generate", notes = "Generate a address from public key", httpMethod = "POST")
-  def address: Route = {
-    path("address") {
-      withCors {
-        entity(as[String]) { publicKey =>
-          postJsonRoute {
-            val account = Account.fromPublicKey(Base58.decode(publicKey).get)
+  def address: Route = path("address") {
+    entity(as[String]) { publicKey =>
+      postJsonRoute {
+        Base58.decode(publicKey) match {
+          case Success(pubKeyBytes) => {
+            val account = Account.fromPublicKey(pubKeyBytes)
             JsonResponse(Json.obj("address" -> account.address), StatusCodes.OK)
           }
+          case Failure(e) => JsonResponse(InvalidPublicKey.json, InvalidPublicKey.code)
         }
       }
     }
   }
+
 
   @Deprecated
   @Path("/external-payment")
@@ -249,26 +231,24 @@ case class WavesApiRoute(override val application: RunnableApplication)(implicit
   ))
   @ApiResponses(Array(new ApiResponse(code = 200, message = "Json with response or error")))
   def externalPayment: Route = path("external-payment") {
-    withCors {
-      entity(as[String]) { body =>
-        postJsonRoute {
-          Try {
-            val js = Json.parse(body)
-            js.validate[ExternalPayment] match {
-              case _: JsError => WrongJson.response
-              case JsSuccess(payment: ExternalPayment, _) =>
-                Base58.decode(payment.senderPublicKey) match {
-                  case Success(senderPublicKeyBytes) =>
-                    val senderAccount = Account.fromPublicKey(senderPublicKeyBytes)
-                    if (suspendedSenders.contains(senderAccount.address))
-                      InvalidSender.response
-                    else
-                      broadcastPayment(payment)
-                  case Failure(_) => InvalidSender.response
-                }
-            }
-          }.getOrElse(WrongJson.response)
-        }
+    entity(as[String]) { body =>
+      postJsonRoute {
+        Try {
+          val js = Json.parse(body)
+          js.validate[ExternalPayment] match {
+            case _: JsError => WrongJson.response
+            case JsSuccess(payment: ExternalPayment, _) =>
+              Base58.decode(payment.senderPublicKey) match {
+                case Success(senderPublicKeyBytes) =>
+                  val senderAccount = Account.fromPublicKey(senderPublicKeyBytes)
+                  if (suspendedSenders.contains(senderAccount.address))
+                    InvalidSender.response
+                  else
+                    broadcastPayment(payment)
+                case Failure(_) => InvalidSender.response
+              }
+          }
+        }.getOrElse(WrongJson.response)
       }
     }
   }
@@ -287,24 +267,22 @@ case class WavesApiRoute(override val application: RunnableApplication)(implicit
   ))
   @ApiResponses(Array(new ApiResponse(code = 200, message = "Json with response or error")))
   def broadcastSignedPayment: Route = path("broadcast-signed-payment") {
-    withCors {
-      entity(as[String]) { body =>
-        postJsonRoute {
-          Try(Json.parse(body)).map { js =>
-            js.validate[SignedPayment] match {
-              case _: JsError =>
-                WrongJson.response
-              case JsSuccess(payment: SignedPayment, _) =>
-                Base58.decode(payment.senderPublicKey) match {
-                  case Success(senderPubKeyBytes) =>
-                    val senderAccount = Account.fromPublicKey(senderPubKeyBytes)
-                    if (suspendedSenders.contains(senderAccount.address)) InvalidSender.response
-                    else broadcastPayment(payment)
-                  case Failure(e) => InvalidSender.response
-                }
-            }
-          }.getOrElse(WrongJson.response)
-        }
+    entity(as[String]) { body =>
+      postJsonRoute {
+        Try(Json.parse(body)).map { js =>
+          js.validate[SignedPayment] match {
+            case _: JsError =>
+              WrongJson.response
+            case JsSuccess(payment: SignedPayment, _) =>
+              Base58.decode(payment.senderPublicKey) match {
+                case Success(senderPubKeyBytes) =>
+                  val senderAccount = Account.fromPublicKey(senderPubKeyBytes)
+                  if (suspendedSenders.contains(senderAccount.address)) InvalidSender.response
+                  else broadcastPayment(payment)
+                case Failure(e) => InvalidSender.response
+              }
+          }
+        }.getOrElse(WrongJson.response)
       }
     }
   }
@@ -318,20 +296,15 @@ case class WavesApiRoute(override val application: RunnableApplication)(implicit
             case ValidationResult.ValidateOke =>
               JsonResponse(tx.json, StatusCodes.OK)
 
-            case ValidationResult.InvalidAddress =>
-              InvalidAddress.response
-
-            case ValidationResult.NegativeAmount =>
-              NegativeAmount.response
-
-            case ValidationResult.NegativeFee =>
-              NegativeFee.response
+            case ValidationResult.InvalidAddress => InvalidAddress.response
+            case ValidationResult.NegativeAmount => NegativeAmount.response
+            case ValidationResult.InsufficientFee => InsufficientFee.response
           }
         }
       case Left(e) => e match {
         case ValidationResult.NoBalance => NoBalance.response
         case ValidationResult.InvalidAddress => InvalidAddress.response
-        case ValidationResult.NegativeFee => NegativeFee.response
+        case ValidationResult.InsufficientFee => InsufficientFee.response
         case _ => Unknown.response
       }
     }
@@ -351,20 +324,15 @@ case class WavesApiRoute(override val application: RunnableApplication)(implicit
             case ValidationResult.ValidateOke =>
               JsonResponse(tx.json, StatusCodes.OK)
 
-            case ValidationResult.InvalidAddress =>
-              InvalidAddress.response
-
-            case ValidationResult.NegativeAmount =>
-              NegativeAmount.response
-
-            case ValidationResult.NegativeFee =>
-              NegativeFee.response
+            case ValidationResult.InvalidAddress => InvalidAddress.response
+            case ValidationResult.NegativeAmount => NegativeAmount.response
+            case ValidationResult.InsufficientFee => InsufficientFee.response
           }
         }
       case Left(e) => e match {
         case ValidationResult.NoBalance => NoBalance.response
         case ValidationResult.InvalidAddress => InvalidAddress.response
-        case ValidationResult.NegativeFee => NegativeFee.response
+        case ValidationResult.InsufficientFee => NegativeFee.response
         case _ => Unknown.response
       }
     }
