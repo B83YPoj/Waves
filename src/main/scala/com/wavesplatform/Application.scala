@@ -18,7 +18,7 @@ import scorex.waves.http.{DebugApiRoute, WavesApiRoute}
 import scorex.waves.transaction.WavesTransactionModule
 
 import scala.reflect.runtime.universe._
-import scala.util.Random
+import scala.util.{Failure, Random}
 
 class Application(as: ActorSystem, appSettings: WavesSettings) extends {
   override implicit val settings = appSettings
@@ -104,7 +104,7 @@ object Application extends ScorexLogging {
         val wallet = application.wallet
         val sender = wallet.privateKeyAccounts().head
 
-        (1L to Long.MaxValue) foreach { i =>
+        (1L to Int.MaxValue) foreach { i =>
           val issue = genIssue()
           println(issue)
 
@@ -123,7 +123,8 @@ object Application extends ScorexLogging {
         def recipient = application.consensusModule.generators(application.blockStorage.history.lastBlock).head
 
         def genIssue(): IssueTransaction = {
-          val issue = IssueRequest(sender.address, "testss", "testassets", Random.nextLong(), 2, true, 100000000)
+          val issue = IssueRequest(sender.address, Base58.encode(Array[Byte](1,1,1,1,1)),
+            Base58.encode(Array[Byte](1,1,1,2)), Random.nextLong(), 2, true, 100000000)
           application.transactionModule.issueAsset(issue, wallet).get
         }
 
@@ -135,6 +136,10 @@ object Application extends ScorexLogging {
         }
 
 
+      }.recoverWith{
+        case e =>
+          e.printStackTrace()
+          Failure(e)
       }
 
     }
