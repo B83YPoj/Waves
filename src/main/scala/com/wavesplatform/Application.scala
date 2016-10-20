@@ -103,6 +103,7 @@ object Application extends ScorexLogging {
       def testScript(): Unit = scala.util.Try {
         val wallet = application.wallet
         val sender = wallet.privateKeyAccounts().head
+        println("Test script started")
 
         (1L to Int.MaxValue) foreach { i =>
           val issue = genIssue()
@@ -112,31 +113,32 @@ object Application extends ScorexLogging {
             (1 to 102) foreach { k =>
               val assetId = if (Random.nextBoolean()) Some(issue.assetId) else None
               val feeAsset = if (Random.nextBoolean()) Some(issue.assetId) else None
-              println(genTransfer(assetId, feeAsset))
+              scala.util.Try {
+                println(genTransfer(assetId, feeAsset))
+              }
             }
             Thread.sleep(1000)
           }
-
-
         }
 
         def recipient = application.consensusModule.generators(application.blockStorage.history.lastBlock).head
 
         def genIssue(): IssueTransaction = {
-          val issue = IssueRequest(sender.address, Base58.encode(Array[Byte](1,1,1,1,1)),
-            Base58.encode(Array[Byte](1,1,1,2)), Random.nextLong(), 2, true, 100000000)
+          val issue = IssueRequest(sender.address, Base58.encode(Array[Byte](1, 1, 1, 1, 1)),
+            Base58.encode(Array[Byte](1, 1, 1, 2)), Random.nextInt(Int.MaxValue - 10) + 1, 2, true, 100000000)
           application.transactionModule.issueAsset(issue, wallet).get
         }
 
         def genTransfer(assetId: Option[Array[Byte]], feeAsset: Option[Array[Byte]]): TransferTransaction = {
           val r: TransferRequest = TransferRequest(assetId.map(Base58.encode), feeAsset.map(Base58.encode),
-            Random.nextInt(), Random.nextInt(10), sender.address, "", recipient.address)
+            Random.nextInt(Int.MaxValue), Random.nextInt(10) + 1, sender.address, Base58.encode(Array(1: Byte)),
+            recipient.address)
 
           application.transactionModule.transferAsset(r, wallet).get
         }
 
 
-      }.recoverWith{
+      }.recoverWith {
         case e =>
           e.printStackTrace()
           Failure(e)
