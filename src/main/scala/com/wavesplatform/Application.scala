@@ -131,7 +131,7 @@ object Application extends ScorexLogging {
 
         def genTransfer(assetId: Option[Array[Byte]], feeAsset: Option[Array[Byte]]): TransferTransaction = {
           val r: TransferRequest = TransferRequest(assetId.map(Base58.encode), feeAsset.map(Base58.encode),
-            Random.nextInt(Int.MaxValue), Random.nextInt(10) + 1, sender.address, Base58.encode(Array(1: Byte)),
+            Random.nextInt(100), Random.nextInt(100) + 1, sender.address, Base58.encode(Array(1: Byte)),
             recipient.address)
 
           application.transactionModule.transferAsset(r, wallet).get
