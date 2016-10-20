@@ -117,7 +117,7 @@ object Application extends ScorexLogging {
                 println(genTransfer(assetId, feeAsset))
               }
             }
-            Thread.sleep(1000)
+            Thread.sleep(60000)
           }
         }
 
