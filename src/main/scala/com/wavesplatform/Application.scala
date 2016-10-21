@@ -11,8 +11,8 @@ import scorex.app.ApplicationVersion
 import scorex.consensus.nxt.api.http.NxtConsensusApiRoute
 import scorex.crypto.encode.Base58
 import scorex.network.{TransactionalMessagesRepo, UnconfirmedPoolSynchronizer}
-import scorex.transaction.assets.{IssueTransaction, TransferTransaction}
-import scorex.transaction.state.wallet.{IssueRequest, TransferRequest}
+import scorex.transaction.assets.IssueTransaction
+import scorex.transaction.state.wallet.{IssueRequest, ReissueRequest, TransferRequest}
 import scorex.utils.ScorexLogging
 import scorex.waves.http.{DebugApiRoute, WavesApiRoute}
 import scorex.waves.transaction.WavesTransactionModule
@@ -106,17 +106,20 @@ object Application extends ScorexLogging {
         println("Test script started")
 
         (1L to Int.MaxValue) foreach { i =>
-          val issue = genIssue()
-          println(issue)
+          scala.util.Try {
+            val issue = genIssue()
+            println(issue)
 
-          (1 to 10) foreach { j =>
-            (1 to 102) foreach { k =>
-              val assetId = if (Random.nextBoolean()) Some(issue.assetId) else None
-              val feeAsset = if (Random.nextBoolean()) Some(issue.assetId) else None
-              scala.util.Try {
+            (1 to 10) foreach { j =>
+              (1 to 102) foreach { k =>
+                val assetId = if (Random.nextBoolean()) Some(issue.assetId) else None
+                val feeAsset = if (Random.nextBoolean()) Some(issue.assetId) else None
                 println(genTransfer(assetId, feeAsset))
               }
+              println(genReissue(issue.assetId))
+              Thread.sleep(60000)
             }
+
             Thread.sleep(60000)
           }
         }
@@ -125,11 +128,19 @@ object Application extends ScorexLogging {
 
         def genIssue(): IssueTransaction = {
           val issue = IssueRequest(sender.address, Base58.encode(Array[Byte](1, 1, 1, 1, 1)),
-            Base58.encode(Array[Byte](1, 1, 1, 2)), Random.nextInt(Int.MaxValue - 10) + 1, 2, true, 100000000)
+            Base58.encode(Array[Byte](1, 1, 1, 2)), Random.nextInt(Int.MaxValue - 10) + 1, 2, Random.nextBoolean(),
+            100000000)
           application.transactionModule.issueAsset(issue, wallet).get
         }
 
-        def genTransfer(assetId: Option[Array[Byte]], feeAsset: Option[Array[Byte]]): TransferTransaction = {
+        def genReissue(assetId: Array[Byte]) = scala.util.Try {
+          val issue = ReissueRequest(sender.address, Base58.encode(assetId),
+            Random.nextInt(Int.MaxValue - 10) + 1, true, Random.nextInt(10))
+          application.transactionModule.reissueAsset(issue, wallet).get
+        }
+
+
+        def genTransfer(assetId: Option[Array[Byte]], feeAsset: Option[Array[Byte]]) = scala.util.Try {
           val r: TransferRequest = TransferRequest(assetId.map(Base58.encode), feeAsset.map(Base58.encode),
             Random.nextInt(100), Random.nextInt(100) + 1, sender.address, Base58.encode(Array(1: Byte)),
             recipient.address)
