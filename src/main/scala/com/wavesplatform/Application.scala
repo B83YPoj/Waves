@@ -5,20 +5,20 @@ import com.wavesplatform.actor.RootActorSystem
 import com.wavesplatform.consensus.WavesConsensusModule
 import com.wavesplatform.http.NodeApiRoute
 import com.wavesplatform.settings._
-import scorex.account.AddressScheme
+import scorex.account.{Account, AddressScheme}
 import scorex.api.http._
 import scorex.app.ApplicationVersion
 import scorex.consensus.nxt.api.http.NxtConsensusApiRoute
 import scorex.crypto.encode.Base58
 import scorex.network.{TransactionalMessagesRepo, UnconfirmedPoolSynchronizer}
-import scorex.transaction.assets.IssueTransaction
+import scorex.transaction.assets.{ReissueTransaction, IssueTransaction}
 import scorex.transaction.state.wallet.{IssueRequest, ReissueRequest, TransferRequest}
 import scorex.utils.ScorexLogging
 import scorex.waves.http.{DebugApiRoute, WavesApiRoute}
 import scorex.waves.transaction.WavesTransactionModule
 
 import scala.reflect.runtime.universe._
-import scala.util.{Failure, Random}
+import scala.util.{Success, Failure, Random}
 
 class Application(as: ActorSystem, appSettings: WavesSettings) extends {
   override implicit val settings = appSettings
@@ -109,6 +109,7 @@ object Application extends ScorexLogging {
           scala.util.Try {
             val issue = genIssue()
             println(issue)
+            Thread.sleep(60000)
 
             (1 to 10) foreach { j =>
               (1 to 102) foreach { k =>
@@ -119,12 +120,14 @@ object Application extends ScorexLogging {
               println(genReissue(issue.assetId))
               Thread.sleep(60000)
             }
-
-            Thread.sleep(60000)
           }
+
         }
 
-        def recipient = application.consensusModule.generators(application.blockStorage.history.lastBlock).head
+        def recipient: Account = {
+          if(Random.nextBoolean()) sender
+          else new Account("3N5jhcA7R98AUN12ee9pB7unvnAKfzb3nen")
+        }
 
         def genIssue(): IssueTransaction = {
           val issue = IssueRequest(sender.address, Base58.encode(Array[Byte](1, 1, 1, 1, 1)),
@@ -133,10 +136,21 @@ object Application extends ScorexLogging {
           application.transactionModule.issueAsset(issue, wallet).get
         }
 
-        def genReissue(assetId: Array[Byte]) = scala.util.Try {
-          val issue = ReissueRequest(sender.address, Base58.encode(assetId),
+        def genReissue(assetId: Array[Byte]): scala.util.Try[ReissueTransaction] = scala.util.Try {
+          val request = ReissueRequest(sender.address, Base58.encode(assetId),
             Random.nextInt(Int.MaxValue - 10) + 1, true, Random.nextInt(10))
-          application.transactionModule.reissueAsset(issue, wallet).get
+          val reissue = ReissueTransaction.create(sender,
+            Base58.decode(request.assetId).get,
+            request.quantity,
+            request.reissuable,
+            request.fee,
+            System.currentTimeMillis())
+          if(application.transactionModule.isValid(reissue)) {
+            application.transactionModule.onNewOffchainTransaction(reissue)
+            reissue
+          } else {
+            throw new Error("Invalid reissue" + reissue.validate)
+          }
         }
 
 
