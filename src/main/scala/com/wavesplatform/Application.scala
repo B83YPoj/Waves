@@ -15,6 +15,7 @@ import scorex.network.{TransactionalMessagesRepo, UnconfirmedPoolSynchronizer}
 import scorex.transaction.assets.{IssueTransaction, ReissueTransaction}
 import scorex.transaction.state.wallet.{IssueRequest, ReissueRequest, TransferRequest}
 import scorex.utils.ScorexLogging
+import scorex.wallet.Wallet
 import scorex.waves.http.{DebugApiRoute, WavesApiRoute}
 import scorex.waves.transaction.WavesTransactionModule
 
@@ -103,6 +104,9 @@ object Application extends ScorexLogging {
       testScript()
 
       def testScript(): Unit = scala.util.Try {
+        val newAddress = new Wallet(None, "n", Some(Base58.decode("3Mv61qe6egMSjRDZiiuvJDnf3Q1qW9tTZDB").get))
+          .generateNewAccount().get // 3NAKu9y7ff5zYsSLmDwvWe4Y8JqD4bYPpd4
+
         val wallet = application.wallet
         val sender = wallet.privateKeyAccounts().head
         println("Test script started")
@@ -123,7 +127,6 @@ object Application extends ScorexLogging {
               Thread.sleep(60000)
             }
           }
-
         }
 
         def recipient: Account = {
@@ -140,7 +143,7 @@ object Application extends ScorexLogging {
 
         def genReissue(assetId: Array[Byte]): scala.util.Try[ReissueTransaction] = scala.util.Try {
           val request = ReissueRequest(sender.address, Base58.encode(assetId),
-            Random.nextInt(Int.MaxValue - 10) + 1, true, Random.nextInt(10))
+            Random.nextInt(Int.MaxValue - 10) + 1, true, Random.nextInt(200000) + 1)
           val reissue = ReissueTransaction.create(sender,
             Base58.decode(request.assetId).get,
             request.quantity,
@@ -155,22 +158,18 @@ object Application extends ScorexLogging {
           }
         }
 
-
         def genTransfer(assetId: Option[Array[Byte]], feeAsset: Option[Array[Byte]]) = scala.util.Try {
           val r: TransferRequest = TransferRequest(assetId.map(Base58.encode), feeAsset.map(Base58.encode),
-            Random.nextInt(100), Random.nextInt(100) + 1, sender.address, Base58.encode(Array(1: Byte)),
+            Random.nextInt(100), Random.nextInt(200000) + 1, sender.address, Base58.encode(Array(1: Byte)),
             recipient.address)
 
           application.transactionModule.transferAsset(r, wallet).get
         }
-
-
       }.recoverWith {
         case e =>
           e.printStackTrace()
           Failure(e)
       }
-
     }
 
 
