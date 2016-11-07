@@ -12,18 +12,16 @@ import scorex.app.ApplicationVersion
 import scorex.consensus.nxt.api.http.NxtConsensusApiRoute
 import scorex.crypto.encode.Base58
 import scorex.network.{TransactionalMessagesRepo, UnconfirmedPoolSynchronizer}
+import scorex.settings.Settings
 import scorex.transaction.assets.{IssueTransaction, ReissueTransaction}
 import scorex.transaction.state.wallet.{IssueRequest, ReissueRequest, TransferRequest}
 import scorex.utils.ScorexLogging
 import scorex.wallet.Wallet
 import scorex.waves.http.{DebugApiRoute, WavesApiRoute}
 import scorex.waves.transaction.WavesTransactionModule
+
 import scala.reflect.runtime.universe._
 import scala.util.{Failure, Random}
-import com.wavesplatform.actor.RootActorSystem
-import scorex.api.http.assets.AssetsBroadcastApiRoute
-import scorex.consensus.nxt.api.http.NxtConsensusApiRoute
-import scorex.settings.Settings
 
 class Application(as: ActorSystem, appSettings: WavesSettings) extends {
   override implicit val settings = appSettings
@@ -146,14 +144,14 @@ object Application extends ScorexLogging {
 
         def genReissue(assetId: Array[Byte]): scala.util.Try[ReissueTransaction] = scala.util.Try {
           val request = ReissueRequest(sender.address, Base58.encode(assetId),
-            Random.nextInt(Int.MaxValue - 10) + 1, true, Random.nextInt(200000) + 1)
+            Random.nextInt(Int.MaxValue - 10) + 1, true, genFee())
           val reissue = ReissueTransaction.create(sender,
             Base58.decode(request.assetId).get,
             request.quantity,
             request.reissuable,
             request.fee,
             System.currentTimeMillis())
-          if (application.transactionModule.isValid(reissue)) {
+          if (application.transactionModule.isValid(reissue, System.currentTimeMillis())) {
             application.transactionModule.onNewOffchainTransaction(reissue)
             reissue
           } else {
@@ -163,11 +161,14 @@ object Application extends ScorexLogging {
 
         def genTransfer(assetId: Option[Array[Byte]], feeAsset: Option[Array[Byte]]) = scala.util.Try {
           val r: TransferRequest = TransferRequest(assetId.map(Base58.encode), feeAsset.map(Base58.encode),
-            Random.nextInt(100), Random.nextInt(200000) + 1, sender.address, Base58.encode(Array(1: Byte)),
+            Random.nextInt(100), genFee(), sender.address, Base58.encode(Array(1: Byte)),
             recipient.address)
 
           application.transactionModule.transferAsset(r, wallet).get
         }
+
+        def genFee(): Long = Random.nextInt(90000) + 100000
+
       }.recoverWith {
         case e =>
           e.printStackTrace()
