@@ -119,7 +119,7 @@ object Application extends ScorexLogging {
             Thread.sleep(60000)
 
             (1 to 10) foreach { j =>
-              (1 to 102) foreach { k =>
+              (1 to 1002) foreach { k =>
                 val assetId = if (Random.nextBoolean()) Some(issue.assetId) else None
                 val feeAsset = if (Random.nextBoolean()) Some(issue.assetId) else None
                 println(genTransfer(assetId, feeAsset))
