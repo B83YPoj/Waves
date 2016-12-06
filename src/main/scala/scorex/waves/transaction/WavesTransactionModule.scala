@@ -8,8 +8,8 @@ import scorex.block.BlockField
 import scorex.crypto.encode.Base58
 import scorex.settings.Settings
 import scorex.transaction.ValidationResult.ValidationResult
-import scorex.transaction.{ValidationResult, _}
 import scorex.transaction.state.wallet.Payment
+import scorex.transaction.{ValidationResult, _}
 import scorex.utils.NTP
 import scorex.wallet.Wallet
 
@@ -17,7 +17,7 @@ import scorex.wallet.Wallet
   * Waves Transaction Module
   */
 class WavesTransactionModule(chainParams: ChainParameters)(implicit override val settings: TransactionSettings with Settings,
-                             application: RunnableApplication)
+                                                           application: RunnableApplication)
   extends SimpleTransactionModule(chainParams) {
 
   override val InitialBalance = chainParams.initialBalance
@@ -34,6 +34,11 @@ class WavesTransactionModule(chainParams: ChainParameters)(implicit override val
     wallet.privateKeyAccount(payment.sender).map { sender =>
       signPayment(sender, new Account(payment.recipient), payment.amount, payment.fee, NTP.correctedTime())
     }
+  }
+
+
+  override def putUnconfirmedIfNew(tx: Transaction): Boolean = synchronized {
+    utxStorage.putIfNew(tx, isValid(_, tx.timestamp))
   }
 
   /**
