@@ -25,7 +25,7 @@ import scala.util.{Failure, Random}
 
 class Application(as: ActorSystem, appSettings: WavesSettings) extends {
   override implicit val settings = appSettings
-  override val applicationName = Constants.ApplicationName
+  override val applicationName = Constants.ApplicationName + appSettings.chainParams.addressScheme.chainId.toChar
   override val appVersion = {
     val parts = Constants.VersionString.split("\\.")
     ApplicationVersion(parts(0).toInt, parts(1).toInt, parts(2).split("-").head.toInt)
