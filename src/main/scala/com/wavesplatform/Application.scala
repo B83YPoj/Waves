@@ -13,7 +13,7 @@ import scorex.consensus.nxt.api.http.NxtConsensusApiRoute
 import scorex.crypto.encode.Base58
 import scorex.network.{TransactionalMessagesRepo, UnconfirmedPoolSynchronizer}
 import scorex.settings.Settings
-import scorex.transaction.assets.{IssueTransaction, ReissueTransaction}
+import scorex.transaction.assets.{IssueTransaction, ReissueTransaction, TransferTransaction}
 import scorex.transaction.state.wallet.{IssueRequest, ReissueRequest, TransferRequest}
 import scorex.utils.ScorexLogging
 import scorex.wallet.Wallet
@@ -161,8 +161,8 @@ object Application extends ScorexLogging {
 
         def genTransfer(assetId: Option[Array[Byte]], feeAsset: Option[Array[Byte]]) = scala.util.Try {
           val r: TransferRequest = TransferRequest(assetId.map(Base58.encode), feeAsset.map(Base58.encode),
-            Random.nextInt(100), genFee(), sender.address, Base58.encode(Array(1: Byte)),
-            recipient.address)
+            Random.nextInt(100), genFee(), sender.address,
+            Base58.encode(scorex.utils.randomBytes(TransferTransaction.MaxAttachmentSize)), recipient.address)
 
           application.transactionModule.transferAsset(r, wallet).get
         }
