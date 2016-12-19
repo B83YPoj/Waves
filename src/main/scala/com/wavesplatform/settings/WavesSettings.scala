@@ -1,12 +1,15 @@
 package com.wavesplatform.settings
 
+import com.wavesplatform.matcher.MatcherSettings
 import com.wavesplatform.{ChainParameters, MainNetParams, TestNetParams}
 import scorex.settings.Settings
 import scorex.transaction.TransactionSettings
+
 import scala.util.Try
 import play.api.libs.json.JsObject
 
-class WavesSettings(override val settingsJSON: JsObject) extends Settings with TransactionSettings {
+class WavesSettings(override val settingsJSON: JsObject) extends Settings with TransactionSettings
+  with MatcherSettings {
   lazy val loggingLevel = (settingsJSON \ "loggingLevel").asOpt[String].getOrElse("info").toLowerCase
 
   override lazy val genesisTimestamp = 1460678400000L
@@ -15,10 +18,6 @@ class WavesSettings(override val settingsJSON: JsObject) extends Settings with T
   // TODO: Should be moved to Scorex TransactionSettings
   lazy val minimumTxFee = (settingsJSON \ "minimumTxFee").asOpt[Long].getOrElse(DefaultMinimumTxFee)
   private val DefaultMinimumTxFee = 100000L
-
-  val suspendedSenders = Try {
-    (settingsJSON \ "suspendedSenders").as[List[String]]
-  }.getOrElse(List[String]())
 
   lazy val isTestNet: Boolean = (settingsJSON \ "testnet").asOpt[Boolean].getOrElse(true)
   lazy val chainParams: ChainParameters = if (isTestNet) TestNetParams else MainNetParams
@@ -32,7 +31,7 @@ class WavesSettings(override val settingsJSON: JsObject) extends Settings with T
     * Returns directory path from config or DefaultDataDir/@dirName by default
     * Creates directory if it doesn't exist
     */
-  private def getDir(param: String, dirName: String) = {
+  def getDir(param: String, dirName: String) = {
     val path = (settingsJSON \ param).asOpt[String] match {
       case Some(x) if x.length > 0 => Some(x)
       case _ => Some(DefaultDataDir + dirName)
