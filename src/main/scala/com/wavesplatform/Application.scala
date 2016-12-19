@@ -14,8 +14,9 @@ import scorex.consensus.nxt.api.http.NxtConsensusApiRoute
 import scorex.crypto.encode.Base58
 import scorex.network.{TransactionalMessagesRepo, UnconfirmedPoolSynchronizer}
 import scorex.settings.Settings
-import scorex.transaction.assets.{IssueTransaction, ReissueTransaction, TransferTransaction}
-import scorex.transaction.state.wallet.{IssueRequest, ReissueRequest, TransferRequest}
+import scorex.transaction.AssetAcc
+import scorex.transaction.assets.{DeleteTransaction, IssueTransaction, ReissueTransaction, TransferTransaction}
+import scorex.transaction.state.wallet.{DeleteRequest, IssueRequest, ReissueRequest, TransferRequest}
 import scorex.utils.ScorexLogging
 import scorex.wallet.Wallet
 import scorex.waves.http.{DebugApiRoute, WavesApiRoute}
@@ -131,7 +132,10 @@ object Application extends ScorexLogging {
                 val feeAsset = if (Random.nextBoolean()) Some(issue.assetId) else None
                 println(genTransfer(assetId, feeAsset))
               }
-              println(genReissue(issue.assetId))
+              (1 to 10) foreach { k =>
+                println(genDelete(issue.assetId))
+                println(genReissue(issue.assetId))
+              }
               Thread.sleep(60000)
             }
           }
@@ -150,8 +154,7 @@ object Application extends ScorexLogging {
         }
 
         def genReissue(assetId: Array[Byte]): scala.util.Try[ReissueTransaction] = scala.util.Try {
-          val request = ReissueRequest(sender.address, Base58.encode(assetId),
-            Random.nextInt(Int.MaxValue - 10) + 1, true, genFee())
+          val request = ReissueRequest(sender.address, Base58.encode(assetId), genAmount(Some(assetId)), true, genFee())
           val reissue = ReissueTransaction.create(sender,
             Base58.decode(request.assetId).get,
             request.quantity,
@@ -168,13 +171,35 @@ object Application extends ScorexLogging {
 
         def genTransfer(assetId: Option[Array[Byte]], feeAsset: Option[Array[Byte]]) = scala.util.Try {
           val r: TransferRequest = TransferRequest(assetId.map(Base58.encode), feeAsset.map(Base58.encode),
-            Random.nextInt(100), genFee(), sender.address,
+            genAmount(assetId), genFee(), sender.address,
             Base58.encode(scorex.utils.randomBytes(TransferTransaction.MaxAttachmentSize)), recipient.address)
 
           application.transactionModule.transferAsset(r, wallet).get
         }
 
+        def genDelete(assetId: Array[Byte]): scala.util.Try[DeleteTransaction] = scala.util.Try {
+          val request = DeleteRequest(sender.address, Base58.encode(assetId), genAmount(Some(assetId)), genFee())
+          val tx = DeleteTransaction.create(sender,
+            Base58.decode(request.assetId).get,
+            request.quantity,
+            request.fee,
+            System.currentTimeMillis())
+          if (application.transactionModule.isValid(tx, System.currentTimeMillis())) {
+            application.transactionModule.onNewOffchainTransaction(tx)
+            tx
+          } else {
+            throw new Error("Invalid delete transaction" + tx.validate)
+          }
+        }
+
         def genFee(): Long = Random.nextInt(90000) + 100000
+
+        def genAmount(assetId: Option[Array[Byte]]): Long = assetId match {
+          case Some(ai) =>
+            val balance = application.blockStorage.state.assetBalance(AssetAcc(sender, Some(ai)))
+            Random.nextInt(balance.toInt)
+          case None => Random.nextInt(100)
+        }
 
       }.recoverWith {
         case e =>
