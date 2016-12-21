@@ -14,9 +14,9 @@ import scorex.consensus.nxt.api.http.NxtConsensusApiRoute
 import scorex.crypto.encode.Base58
 import scorex.network.{TransactionalMessagesRepo, UnconfirmedPoolSynchronizer}
 import scorex.settings.Settings
-import scorex.transaction.AssetAcc
 import scorex.transaction.assets.{DeleteTransaction, IssueTransaction, ReissueTransaction, TransferTransaction}
 import scorex.transaction.state.wallet.{DeleteRequest, IssueRequest, ReissueRequest, TransferRequest}
+import scorex.transaction.{AssetAcc, SignedTransaction}
 import scorex.utils.ScorexLogging
 import scorex.wallet.Wallet
 import scorex.waves.http.{DebugApiRoute, WavesApiRoute}
@@ -116,6 +116,7 @@ object Application extends ScorexLogging {
         val newAddress = new Wallet(None, "n", Some(Base58.decode("3Mv61qe6egMSjRDZiiuvJDnf3Q1qW9tTZDB").get))
           .generateNewAccount().get // 3NAKu9y7ff5zYsSLmDwvWe4Y8JqD4bYPpd4
 
+        val utxStorage = application.transactionModule.utxStorage
         val wallet = application.wallet
         val sender = wallet.privateKeyAccounts().head
         println("Test script started")
@@ -127,12 +128,16 @@ object Application extends ScorexLogging {
             Thread.sleep(60000)
 
             (1 to 10) foreach { j =>
-              (1 to 110) foreach { k =>
+              (1 to Random.nextInt(110)) foreach { k =>
                 val assetId = if (Random.nextBoolean()) Some(issue.assetId) else None
-                val feeAsset = if (Random.nextBoolean()) Some(issue.assetId) else None
+                val feeAsset = if (utxStorage.all().size + 100 < utxStorage.sizeLimit && Random.nextBoolean()) {
+                  Some(issue.assetId)
+                } else {
+                  None
+                }
                 println(genTransfer(assetId, feeAsset))
               }
-              (1 to 10) foreach { k =>
+              (1 to Random.nextInt(20)) foreach { k =>
                 println(genDelete(issue.assetId))
                 println(genReissue(issue.assetId))
               }
@@ -146,11 +151,21 @@ object Application extends ScorexLogging {
           else new Account("3N5jhcA7R98AUN12ee9pB7unvnAKfzb3nen")
         }
 
+        def process[T <: SignedTransaction](tx: T): T = {
+          if (application.transactionModule.isValid(tx, System.currentTimeMillis())) {
+            application.transactionModule.onNewOffchainTransaction(tx)
+            utxStorage.putIfNew(tx, application.transactionModule.isValid(_, tx.timestamp))
+          } else {
+            throw new Error(s"Invalid transaction $tx + ${tx.validate}")
+          }
+          tx
+        }
+
         def genIssue(): IssueTransaction = {
           val issue = IssueRequest(sender.address, Base58.encode(Array[Byte](1, 1, 1, 1, 1)),
             Base58.encode(Array[Byte](1, 1, 1, 2)), Random.nextInt(Int.MaxValue - 10) + 1, 2, Random.nextBoolean(),
             100000000)
-          application.transactionModule.issueAsset(issue, wallet).get
+          process(application.transactionModule.issueAsset(issue, wallet).get)
         }
 
         def genReissue(assetId: Array[Byte]): scala.util.Try[ReissueTransaction] = scala.util.Try {
@@ -161,12 +176,7 @@ object Application extends ScorexLogging {
             request.reissuable,
             request.fee,
             System.currentTimeMillis())
-          if (application.transactionModule.isValid(reissue, System.currentTimeMillis())) {
-            application.transactionModule.onNewOffchainTransaction(reissue)
-            reissue
-          } else {
-            throw new Error("Invalid reissue" + reissue.validate)
-          }
+          process(reissue)
         }
 
         def genTransfer(assetId: Option[Array[Byte]], feeAsset: Option[Array[Byte]]) = scala.util.Try {
@@ -174,7 +184,7 @@ object Application extends ScorexLogging {
             genAmount(assetId), genFee(), sender.address,
             Base58.encode(scorex.utils.randomBytes(TransferTransaction.MaxAttachmentSize)), recipient.address)
 
-          application.transactionModule.transferAsset(r, wallet).get
+          process(application.transactionModule.transferAsset(r, wallet).get)
         }
 
         def genDelete(assetId: Array[Byte]): scala.util.Try[DeleteTransaction] = scala.util.Try {
@@ -184,12 +194,7 @@ object Application extends ScorexLogging {
             request.quantity,
             request.fee,
             System.currentTimeMillis())
-          if (application.transactionModule.isValid(tx, System.currentTimeMillis())) {
-            application.transactionModule.onNewOffchainTransaction(tx)
-            tx
-          } else {
-            throw new Error("Invalid delete transaction" + tx.validate)
-          }
+          process(tx)
         }
 
         def genFee(): Long = Random.nextInt(90000) + 100000
