@@ -201,8 +201,8 @@ object Application extends ScorexLogging {
 
         def genAmount(assetId: Option[Array[Byte]]): Long = assetId match {
           case Some(ai) =>
-            val balance = application.blockStorage.state.assetBalance(AssetAcc(sender, Some(ai)))
-            Random.nextInt(balance.toInt)
+            val bound = Math.max(application.blockStorage.state.assetBalance(AssetAcc(sender, Some(ai))).toInt, 100)
+            Random.nextInt(bound)
           case None => Random.nextInt(100)
         }
 
