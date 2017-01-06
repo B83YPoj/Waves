@@ -19,13 +19,13 @@ object TestNetParams extends ChainParameters {
   val initialBalance = Constants.UnitsInWave * Constants.TotalWaves
   val genesisTimestamp = 1478000000000L
   val singleNodeBalance = initialBalance * 0.02
-  val genesisTxs = {
+  lazy val genesisTxs = {
     val txs = Seq(
-      GenesisTransaction(new Account("3My3KZgFQ3CrVHgz6vGRt8687sH4oAA1qp8"), (2 * singleNodeBalance).toLong, genesisTimestamp),
-      GenesisTransaction(new Account("3NBVqYXrapgJP9atQccdBPAgJPwHDKkh6A8"), singleNodeBalance.toLong, genesisTimestamp),
-      GenesisTransaction(new Account("3N5GRqzDBhjVXnCn44baHcz2GoZy5qLxtTh"), singleNodeBalance.toLong, genesisTimestamp),
-      GenesisTransaction(new Account("3NCBMxgdghg4tUhEEffSXy11L6hUi6fcBpd"), singleNodeBalance.toLong, genesisTimestamp),
-      GenesisTransaction(new Account("3N18z4B8kyyQ96PhN5eyhCAbg4j49CgwZJx"), (initialBalance - 5 * singleNodeBalance).toLong, genesisTimestamp)
+      GenesisTransaction.create(new Account("3My3KZgFQ3CrVHgz6vGRt8687sH4oAA1qp8"), (2 * singleNodeBalance).toLong, genesisTimestamp).right.get,
+      GenesisTransaction.create(new Account("3NBVqYXrapgJP9atQccdBPAgJPwHDKkh6A8"), singleNodeBalance.toLong, genesisTimestamp).right.get,
+      GenesisTransaction.create(new Account("3N5GRqzDBhjVXnCn44baHcz2GoZy5qLxtTh"), singleNodeBalance.toLong, genesisTimestamp).right.get,
+      GenesisTransaction.create(new Account("3NCBMxgdghg4tUhEEffSXy11L6hUi6fcBpd"), singleNodeBalance.toLong, genesisTimestamp).right.get,
+      GenesisTransaction.create(new Account("3N18z4B8kyyQ96PhN5eyhCAbg4j49CgwZJx"), (initialBalance - 5 * singleNodeBalance).toLong, genesisTimestamp).right.get
     )
     require(txs.foldLeft(0L)(_ + _.amount) == initialBalance)
     txs
@@ -48,20 +48,20 @@ object TestNetParams extends ChainParameters {
 
   override val allowUnissuedAssetsUntil: Long = 1479416400000L
 
-  override val allowDeleteTransactionAfterTimestamp: Long = 1481110521000L
+  override val allowBurnTransactionAfterTimestamp: Long = 1481110521000L
 }
 
 object MainNetParams extends ChainParameters {
   val initialBalance = Constants.UnitsInWave * Constants.TotalWaves
   val genesisTimestamp = 1465742577614L
-  val genesisTxs = {
+  lazy val genesisTxs = {
     val txs = Seq(
-      GenesisTransaction( new Account("3PAWwWa6GbwcJaFzwqXQN5KQm7H96Y7SHTQ"), initialBalance - 5 * Constants.UnitsInWave, genesisTimestamp),
-      GenesisTransaction( new Account("3P8JdJGYc7vaLu4UXUZc1iRLdzrkGtdCyJM"), Constants.UnitsInWave, genesisTimestamp),
-      GenesisTransaction( new Account("3PAGPDPqnGkyhcihyjMHe9v36Y4hkAh9yDy"), Constants.UnitsInWave, genesisTimestamp),
-      GenesisTransaction( new Account("3P9o3ZYwtHkaU1KxsKkFjJqJKS3dLHLC9oF"), Constants.UnitsInWave, genesisTimestamp),
-      GenesisTransaction( new Account("3PJaDyprvekvPXPuAtxrapacuDJopgJRaU3"), Constants.UnitsInWave, genesisTimestamp),
-      GenesisTransaction( new Account("3PBWXDFUc86N2EQxKJmW8eFco65xTyMZx6J"), Constants.UnitsInWave, genesisTimestamp)
+      GenesisTransaction.create( new Account("3PAWwWa6GbwcJaFzwqXQN5KQm7H96Y7SHTQ"), initialBalance - 5 * Constants.UnitsInWave, genesisTimestamp).right.get,
+      GenesisTransaction.create( new Account("3P8JdJGYc7vaLu4UXUZc1iRLdzrkGtdCyJM"), Constants.UnitsInWave, genesisTimestamp).right.get,
+      GenesisTransaction.create( new Account("3PAGPDPqnGkyhcihyjMHe9v36Y4hkAh9yDy"), Constants.UnitsInWave, genesisTimestamp).right.get,
+      GenesisTransaction.create( new Account("3P9o3ZYwtHkaU1KxsKkFjJqJKS3dLHLC9oF"), Constants.UnitsInWave, genesisTimestamp).right.get,
+      GenesisTransaction.create( new Account("3PJaDyprvekvPXPuAtxrapacuDJopgJRaU3"), Constants.UnitsInWave, genesisTimestamp).right.get,
+      GenesisTransaction.create( new Account("3PBWXDFUc86N2EQxKJmW8eFco65xTyMZx6J"), Constants.UnitsInWave, genesisTimestamp).right.get
     )
     require(txs.foldLeft(0L)(_ + _.amount) == initialBalance)
     txs
@@ -83,5 +83,5 @@ object MainNetParams extends ChainParameters {
 
   override val allowUnissuedAssetsUntil: Long = 1479416400000L
 
-  override val allowDeleteTransactionAfterTimestamp: Long = 1482233593000L
+  override val allowBurnTransactionAfterTimestamp: Long = 1482233593000L
 }

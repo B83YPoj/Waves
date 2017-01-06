@@ -29,13 +29,13 @@ object UnitTestNetParams extends ChainParameters {
   val initialBalance = Constants.UnitsInWave * Constants.TotalWaves
   val genesisTimestamp = 1478000000000L
   val singleNodeBalance = initialBalance * 0.02
-  val genesisTxs = {
+  lazy val genesisTxs = {
     val txs = Seq(
-      GenesisTransaction(new Account("3N3keodUiS8WLEw9W4BKDNxgNdUpwSnpb3K"), (2 * singleNodeBalance).toLong, genesisTimestamp),
-      GenesisTransaction(new Account("3NBVqYXrapgJP9atQccdBPAgJPwHDKkh6A8"), singleNodeBalance.toLong, genesisTimestamp),
-      GenesisTransaction(new Account("3N5GRqzDBhjVXnCn44baHcz2GoZy5qLxtTh"), singleNodeBalance.toLong, genesisTimestamp),
-      GenesisTransaction(new Account("3NCBMxgdghg4tUhEEffSXy11L6hUi6fcBpd"), singleNodeBalance.toLong, genesisTimestamp),
-      GenesisTransaction(new Account("3N18z4B8kyyQ96PhN5eyhCAbg4j49CgwZJx"), (initialBalance - 5 * singleNodeBalance).toLong, genesisTimestamp)
+      GenesisTransaction.create(new Account("3N3keodUiS8WLEw9W4BKDNxgNdUpwSnpb3K"), (2 * singleNodeBalance).toLong, genesisTimestamp).right.get,
+      GenesisTransaction.create(new Account("3NBVqYXrapgJP9atQccdBPAgJPwHDKkh6A8"), singleNodeBalance.toLong, genesisTimestamp).right.get,
+      GenesisTransaction.create(new Account("3N5GRqzDBhjVXnCn44baHcz2GoZy5qLxtTh"), singleNodeBalance.toLong, genesisTimestamp).right.get,
+      GenesisTransaction.create(new Account("3NCBMxgdghg4tUhEEffSXy11L6hUi6fcBpd"), singleNodeBalance.toLong, genesisTimestamp).right.get,
+      GenesisTransaction.create(new Account("3N18z4B8kyyQ96PhN5eyhCAbg4j49CgwZJx"), (initialBalance - 5 * singleNodeBalance).toLong, genesisTimestamp).right.get
     )
     require(txs.foldLeft(0L)(_ + _.amount) == initialBalance)
     txs
@@ -58,7 +58,7 @@ object UnitTestNetParams extends ChainParameters {
 
   override def allowUnissuedAssetsUntil: Long = 1479416400000L
 
-  override def allowDeleteTransactionAfterTimestamp: Long = 1481110521000L
+  override def allowBurnTransactionAfterTimestamp: Long = 1481110521000L
 }
 
 object TestingCommons {
@@ -130,8 +130,9 @@ object TestingCommons {
   }
 
   def matcherPostRequest(path: String, body: String = "",
-                  headers: Map[String, String] = Map("api_key" -> "test")): JsValue = {
-    val request = Http(url(matcherUrl() + path).POST <:< headers << body )
+                         params: Map[String, String] = Map.empty,
+                         headers: Map[String, String] = Map("api_key" -> "test")): JsValue = {
+    val request = Http(url(matcherUrl() + path).POST <:< headers <<? params << body )
     val response = Await.result(request, 5.seconds)
     Json.parse(response.getResponseBody)
   }

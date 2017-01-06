@@ -3,24 +3,25 @@ package com.wavesplatform.matcher.market
 import akka.actor.Props
 import akka.http.scaladsl.model.{StatusCode, StatusCodes}
 import akka.persistence._
+import com.wavesplatform.matcher.api.CancelOrderRequest
 import com.wavesplatform.matcher.market.OrderBookActor._
 import com.wavesplatform.matcher.model.Events.{Event, OrderAdded, OrderExecuted}
 import com.wavesplatform.matcher.model.MatcherModel._
 import com.wavesplatform.matcher.model.{OrderValidator, _}
-import com.wavesplatform.matcher.util.Cache
 import com.wavesplatform.settings.WavesSettings
 import play.api.libs.json.{JsString, JsValue, Json}
+import scorex.account.PublicKeyAccount
+import scorex.crypto.EllipticCurveImpl
 import scorex.crypto.encode.Base58
 import scorex.transaction.SimpleTransactionModule._
 import scorex.transaction.TransactionModule
 import scorex.transaction.assets.exchange._
 import scorex.transaction.state.database.blockchain.StoredState
-import scorex.utils.{NTP, ScorexLogging}
+import scorex.utils.{ByteArray, NTP, ScorexLogging}
 import scorex.wallet.Wallet
 
-import scala.concurrent.ExecutionContext.Implicits.global
-import scala.concurrent.duration._
 import scala.collection.JavaConversions._
+import scala.concurrent.ExecutionContext.Implicits.global
 
 class OrderBookActor(assetPair: AssetPair, val storedState: StoredState,
                      val wallet: Wallet, val settings: WavesSettings,
@@ -54,23 +55,22 @@ class OrderBookActor(assetPair: AssetPair, val storedState: StoredState,
       log.error(s"Failed to save snapshot: $metadata, $reason.")
     case GetOrderStatus(_, id) =>
       handleOrderStatus(id)
-    case CancelOrder(_, tx) =>
-      handleCancelOrder(tx)
+    case cancel: CancelOrder =>
+      handleCancelOrder(cancel)
   }
 
   def handleOrderStatus(id: String): Unit = {
     sender() ! GetOrderStatusResponse(getOrderStatus(id))
   }
 
-  def handleCancelOrder(tx: OrderCancelTransaction) = {
-    val v = validateCancelOrder(tx)
+  def handleCancelOrder(cancel: CancelOrder) = {
+    val v = validateCancelOrder(cancel)
     if (v) {
-      persist(OrderBook.cancelOrder(orderBook, tx.orderIdStr)) { e =>
-        sender() ! OrderCanceled(tx.orderIdStr)
-        e match {
-          case Some(c) => handleCancelEvent(c, tx)
-          case None => sender() ! OrderCancelRejected("Order not found")
-        }
+      persist(OrderBook.cancelOrder(orderBook, cancel.orderId)) {
+        case c@Some(Events.OrderCanceled(lo)) if cancel.req.sender == lo.order.sender =>
+          handleCancelEvent(c.get)
+          sender() ! OrderCanceled(cancel.orderId)
+        case _ => sender() ! OrderCancelRejected("Order not found")
       }
     } else {
       sender() ! OrderCancelRejected(v.messages)
@@ -125,27 +125,33 @@ class OrderBookActor(assetPair: AssetPair, val storedState: StoredState,
 
   def handleMatchEvent(e: Event): Option[LimitOrder] = {
     applyEvent(e)
-    context.system.eventStream.publish(e)
 
     e match {
       case e: OrderAdded =>
+        context.system.eventStream.publish(e)
         None
       case e@OrderExecuted(o, c) =>
         val tx = createTransaction(o, c)
         if (isValid(tx)) {
           sendToNetwork(tx)
+          context.system.eventStream.publish(e)
+
+          if (e.submittedRemaining > 0) Some(o.partial(e.submittedRemaining))
+          else None
+        } else {
+          val canceled = Events.OrderCanceled(c)
+          persist(canceled)(e => ())
+          applyEvent(canceled)
+          Some(o)
         }
-        if (e.submittedRemaining > 0) Some(o.partial(e.submittedRemaining))
-        else None
+
       case _ => None
     }
   }
 
-  def handleCancelEvent(e: Event, tx: OrderCancelTransaction): Unit = {
+  def handleCancelEvent(e: Event): Unit = {
     applyEvent(e)
     context.system.eventStream.publish(e)
-
-    sendToNetwork(tx)
   }
 
 }
@@ -165,7 +171,9 @@ object OrderBookActor {
   }
   case class GetOrderBookRequest(pair: AssetPair, depth: Option[Int]) extends OrderBookRequest
   case class GetOrderStatus(pair: AssetPair, id: String) extends OrderBookRequest
-  case class CancelOrder(pair: AssetPair, tx: OrderCancelTransaction) extends OrderBookRequest
+  case class CancelOrder(pair: AssetPair, req: CancelOrderRequest) extends OrderBookRequest {
+    def orderId: String = Base58.encode(req.orderId)
+  }
 
   sealed trait OrderBookResponse {
     def json: JsValue
