@@ -14,8 +14,8 @@ import scorex.consensus.nxt.api.http.NxtConsensusApiRoute
 import scorex.crypto.encode.Base58
 import scorex.network.{TransactionalMessagesRepo, UnconfirmedPoolSynchronizer}
 import scorex.settings.Settings
-import scorex.transaction.assets.{DeleteTransaction, IssueTransaction, ReissueTransaction, TransferTransaction}
-import scorex.transaction.state.wallet.{DeleteRequest, IssueRequest, ReissueRequest, TransferRequest}
+import scorex.transaction.assets._
+import scorex.transaction.state.wallet._
 import scorex.transaction.{AssetAcc, SignedTransaction}
 import scorex.utils.ScorexLogging
 import scorex.wallet.Wallet
@@ -156,7 +156,7 @@ object Application extends ScorexLogging {
             application.transactionModule.onNewOffchainTransaction(tx)
             utxStorage.putIfNew(tx, application.transactionModule.isValid(_, tx.timestamp))
           } else {
-            throw new Error(s"Invalid transaction $tx + ${tx.validate}")
+            throw new Error(s"Invalid transaction $tx")
           }
           tx
         }
@@ -175,7 +175,7 @@ object Application extends ScorexLogging {
             request.quantity,
             request.reissuable,
             request.fee,
-            System.currentTimeMillis())
+            System.currentTimeMillis()).right.get
           process(reissue)
         }
 
@@ -187,13 +187,13 @@ object Application extends ScorexLogging {
           process(application.transactionModule.transferAsset(r, wallet).get)
         }
 
-        def genDelete(assetId: Array[Byte]): scala.util.Try[DeleteTransaction] = scala.util.Try {
-          val request = DeleteRequest(sender.address, Base58.encode(assetId), genAmount(Some(assetId)), genFee())
-          val tx = DeleteTransaction.create(sender,
+        def genDelete(assetId: Array[Byte]): scala.util.Try[BurnTransaction] = scala.util.Try {
+          val request = BurnRequest(sender.address, Base58.encode(assetId), genAmount(Some(assetId)), genFee())
+          val tx:BurnTransaction = BurnTransaction.create(sender,
             Base58.decode(request.assetId).get,
             request.quantity,
             request.fee,
-            System.currentTimeMillis())
+            System.currentTimeMillis()).right.get
           process(tx)
         }
 
