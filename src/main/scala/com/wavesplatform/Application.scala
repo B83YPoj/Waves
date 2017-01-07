@@ -184,7 +184,7 @@ object Application extends ScorexLogging {
             genAmount(assetId), genFee(), sender.address,
             Base58.encode(scorex.utils.randomBytes(TransferTransaction.MaxAttachmentSize)), recipient.address)
 
-          process(application.transactionModule.transferAsset(r, wallet).get)
+          process(application.transactionModule.transferAsset(r, wallet).get.right.get)
         }
 
         def genDelete(assetId: Array[Byte]): scala.util.Try[BurnTransaction] = scala.util.Try {
