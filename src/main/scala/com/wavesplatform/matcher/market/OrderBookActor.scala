@@ -10,16 +10,15 @@ import com.wavesplatform.matcher.model.MatcherModel._
 import com.wavesplatform.matcher.model.{OrderValidator, _}
 import com.wavesplatform.settings.WavesSettings
 import play.api.libs.json.{JsString, JsValue, Json}
-import scorex.account.PublicKeyAccount
-import scorex.crypto.EllipticCurveImpl
 import scorex.crypto.encode.Base58
 import scorex.transaction.SimpleTransactionModule._
 import scorex.transaction.TransactionModule
 import scorex.transaction.assets.exchange._
 import scorex.transaction.state.database.blockchain.StoredState
-import scorex.utils.{ByteArray, NTP, ScorexLogging}
+import scorex.utils.{NTP, ScorexLogging}
 import scorex.wallet.Wallet
 
+import scala.annotation.tailrec
 import scala.collection.JavaConversions._
 import scala.concurrent.ExecutionContext.Implicits.global
 
@@ -34,6 +33,10 @@ class OrderBookActor(assetPair: AssetPair, val storedState: StoredState,
   private var restoreState = true
 
   context.system.scheduler.schedule(settings.snapshotInterval, settings.snapshotInterval, self, SaveSnapshot)
+
+  override def postStop(): Unit = {
+    log.info(context.self.toString() + " - postStop method")
+  }
 
   override def receiveCommand: Receive = {
     case order:Order =>
@@ -117,34 +120,38 @@ class OrderBookActor(assetPair: AssetPair, val storedState: StoredState,
     }
   }
 
-  def matchOrder(limitOrder: LimitOrder): Unit = {
-    persist(OrderBook.matchOrder(orderBook, limitOrder)) { e =>
-      handleMatchEvent(e).foreach(matchOrder)
-    }
+  @tailrec
+  private def matchOrder(limitOrder: LimitOrder): Unit = {
+    val remOrder = handleMatchEvent(OrderBook.matchOrder(orderBook, limitOrder))
+    if (remOrder.isDefined) matchOrder(remOrder.get)
   }
 
   def handleMatchEvent(e: Event): Option[LimitOrder] = {
-    applyEvent(e)
+    def processEvent(e: Event) = {
+      persist(e)(_ => ())
+      applyEvent(e)
+      context.system.eventStream.publish(e)
+    }
 
     e match {
       case e: OrderAdded =>
-        context.system.eventStream.publish(e)
+        processEvent(e)
+
         None
       case e@OrderExecuted(o, c) =>
         val tx = createTransaction(o, c)
         if (isValid(tx)) {
           sendToNetwork(tx)
-          context.system.eventStream.publish(e)
+          processEvent(e)
 
           if (e.submittedRemaining > 0) Some(o.partial(e.submittedRemaining))
           else None
         } else {
           val canceled = Events.OrderCanceled(c)
-          persist(canceled)(e => ())
-          applyEvent(canceled)
+          processEvent(canceled)
+
           Some(o)
         }
-
       case _ => None
     }
   }
@@ -167,11 +174,11 @@ object OrderBookActor {
 
   //protocol
   sealed trait OrderBookRequest {
-    def pair: AssetPair
+    def assetPair: AssetPair
   }
-  case class GetOrderBookRequest(pair: AssetPair, depth: Option[Int]) extends OrderBookRequest
-  case class GetOrderStatus(pair: AssetPair, id: String) extends OrderBookRequest
-  case class CancelOrder(pair: AssetPair, req: CancelOrderRequest) extends OrderBookRequest {
+  case class GetOrderBookRequest(assetPair: AssetPair, depth: Option[Int]) extends OrderBookRequest
+  case class GetOrderStatus(assetPair: AssetPair, id: String) extends OrderBookRequest
+  case class CancelOrder(assetPair: AssetPair, req: CancelOrderRequest) extends OrderBookRequest {
     def orderId: String = Base58.encode(req.orderId)
   }
 
