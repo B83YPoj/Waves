@@ -2,7 +2,6 @@ package com.wavesplatform
 
 import akka.actor.{ActorSystem, Props}
 import com.wavesplatform.actor.RootActorSystem
-import com.wavesplatform.consensus.WavesConsensusModule
 import com.wavesplatform.http.NodeApiRoute
 import com.wavesplatform.matcher.MatcherApplication
 import com.wavesplatform.settings._
@@ -10,6 +9,7 @@ import scorex.account.{Account, AddressScheme}
 import scorex.api.http._
 import scorex.api.http.assets.AssetsBroadcastApiRoute
 import scorex.app.ApplicationVersion
+import scorex.consensus.nxt.WavesConsensusModule
 import scorex.consensus.nxt.api.http.NxtConsensusApiRoute
 import scorex.crypto.encode.Base58
 import scorex.network.{TransactionalMessagesRepo, UnconfirmedPoolSynchronizer}
@@ -36,7 +36,7 @@ class Application(as: ActorSystem, appSettings: WavesSettings) extends {
 } with scorex.app.RunnableApplication
   with MatcherApplication {
 
-  override implicit lazy val consensusModule = new WavesConsensusModule(settings.chainParams)
+  override implicit lazy val consensusModule = new WavesConsensusModule(settings.chainParams, Constants.AvgBlockDelay)
 
   override implicit lazy val transactionModule = new WavesTransactionModule(settings.chainParams)(settings, this)
 
