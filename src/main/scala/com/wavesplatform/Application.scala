@@ -124,22 +124,28 @@ object Application extends ScorexLogging {
         (1L to Int.MaxValue) foreach { i =>
           scala.util.Try {
             val issue = genIssue()
-            println(issue)
-            Thread.sleep(60000)
+            println("!! " + issue)
 
+            Thread.sleep(60000)
+            val transferN = Random.nextInt(350)
+            val reissueN = Random.nextInt(25)
+            val burnN = Random.nextInt(25)
+            println(s"Going to generate $transferN transfers, $reissueN reissue, $burnN burn")
             (1 to 10) foreach { j =>
-              (1 to Random.nextInt(110)) foreach { k =>
+              (1 to transferN) foreach { k =>
                 val assetId = if (Random.nextBoolean()) Some(issue.assetId) else None
                 val feeAsset = if (utxStorage.all().size + 100 < settings.utxSize && Random.nextBoolean()) {
                   Some(issue.assetId)
                 } else {
                   None
                 }
-                println(genTransfer(assetId, feeAsset))
+                println("!! " + genTransfer(assetId, feeAsset).map(_.json))
               }
-              (1 to Random.nextInt(20)) foreach { k =>
-                println(genDelete(issue.assetId))
-                println(genReissue(issue.assetId))
+              (1 to reissueN) foreach { k =>
+                println("!! " + genDelete(issue.assetId).map(_.json))
+              }
+              (1 to burnN) foreach { k =>
+                println("!! " + genReissue(issue.assetId).map(_.json))
               }
               Thread.sleep(60000)
             }
@@ -152,11 +158,13 @@ object Application extends ScorexLogging {
         }
 
         def process[T <: SignedTransaction](tx: T): T = {
+          application.transactionModule.onNewOffchainTransaction(tx)
           if (application.transactionModule.isValid(tx, System.currentTimeMillis())) {
-            application.transactionModule.onNewOffchainTransaction(tx)
             utxStorage.putIfNew(tx, application.transactionModule.isValid(_, tx.timestamp))
           } else {
-            throw new Error(s"Invalid transaction $tx")
+            val accounts = tx.balanceChanges().filter(_.delta < 0).map(_.assetAcc)
+            throw new Error(s"Invalid transaction $tx. " +
+              s"Balances: ${accounts.map(a => a -> application.blockStorage.state.assetBalance(a))}")
           }
           tx
         }

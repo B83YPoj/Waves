@@ -15,7 +15,7 @@
     "maxConnections": 30
   },
   "walletDir": "/tmp/scorex",
-  "walletSeed": "test",
+  "walletSeed": "3auhLDqQ8rXbi84CFvHh6hsRngRsr8gPwimXu7bCVswBF6Q4HujkyLnff48FDLmVkGrAM8n6jFvh6ydnsyzeJZ9r",
   "walletPassword": "ridethewaves!",
   "dataDir": "/tmp/scorex",
   "rpcEnabled": false,
