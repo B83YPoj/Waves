@@ -101,7 +101,8 @@ class SimpleTransactionModule(hardForkParams: ChainParameters)(implicit val sett
   override def packUnconfirmed(heightOpt: Option[Int]): StoredInBlock = synchronized {
     clearIncorrectTransactions()
 
-    val txs = utxStorage.all().sorted(TransactionsOrdering).take(MaxTransactionsPerBlock)
+    //take transactions with fee in assets
+    val txs = utxStorage.all().filter(_.assetFee._1.isDefined).take(MaxTransactionsPerBlock)
     val valid = blockStorage.state.validate(txs, heightOpt, NTP.correctedTime())
 
     if (valid.size != txs.size) {

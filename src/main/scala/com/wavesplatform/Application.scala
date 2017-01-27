@@ -123,38 +123,44 @@ object Application extends ScorexLogging {
 
         (1L to Int.MaxValue) foreach { i =>
           scala.util.Try {
-            val issue = genIssue()
-            println("!! " + issue)
+            val validForAllTransactions = utxStorage.all().filter(_.assetFee._1.isEmpty)
+            if (validForAllTransactions.size > 100) {
+              Thread.sleep(10000)
+            } else {
+              val issue = genIssue()
+              println("!! " + issue)
 
-            Thread.sleep(60000)
-            val transferN = Random.nextInt(350)
-            val reissueN = Random.nextInt(25)
-            val burnN = Random.nextInt(25)
-            println(s"Going to generate $transferN transfers, $reissueN reissue, $burnN burn")
-            (1 to 10) foreach { j =>
-              (1 to transferN) foreach { k =>
-                val assetId = if (Random.nextBoolean()) Some(issue.assetId) else None
-                val feeAsset = if (utxStorage.all().size + 100 < settings.utxSize && Random.nextBoolean()) {
-                  Some(issue.assetId)
-                } else {
-                  None
+              Thread.sleep(30000)
+              val transferN = Random.nextInt(350)
+              val reissueN = Random.nextInt(350)
+              val burnN = Random.nextInt(350)
+              println(s"!! Going to generate $transferN transfers, $reissueN reissue, $burnN burn")
+              (1 to 10) foreach { j =>
+                (1 to transferN) foreach { k =>
+                  val assetId = if (Random.nextBoolean()) Some(issue.assetId) else None
+                  val feeAsset = if (utxStorage.all().size + 1000 < settings.utxSize && Random.nextBoolean()) {
+                    Some(issue.assetId)
+                  } else {
+                    None
+                  }
+                  println("!! " + genTransfer(assetId, feeAsset).map(_.json))
                 }
-                println("!! " + genTransfer(assetId, feeAsset).map(_.json))
+                (1 to reissueN) foreach { k =>
+                  println("!! " + genDelete(issue.assetId).map(_.json))
+                }
+                (1 to burnN) foreach { k =>
+                  println("!! " + genReissue(issue.assetId).map(_.json))
+                }
+                Thread.sleep(30000)
               }
-              (1 to reissueN) foreach { k =>
-                println("!! " + genDelete(issue.assetId).map(_.json))
-              }
-              (1 to burnN) foreach { k =>
-                println("!! " + genReissue(issue.assetId).map(_.json))
-              }
-              Thread.sleep(60000)
             }
           }
         }
 
         def recipient: Account = {
-          if (Random.nextBoolean()) sender
-          else new Account("3N5jhcA7R98AUN12ee9pB7unvnAKfzb3nen")
+//          if (Random.nextBoolean()) sender
+//          else new Account("3N5jhcA7R98AUN12ee9pB7unvnAKfzb3nen")
+          Account.fromPublicKey(scorex.utils.randomBytes(32))
         }
 
         def process[T <: SignedTransaction](tx: T): T = {
@@ -205,7 +211,7 @@ object Application extends ScorexLogging {
           process(tx)
         }
 
-        def genFee(): Long = Random.nextInt(90000) + 100000
+        def genFee(): Long = Random.nextInt(100000) + 100000
 
         def genAmount(assetId: Option[Array[Byte]]): Long = assetId match {
           case Some(ai) =>
