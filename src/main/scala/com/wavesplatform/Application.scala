@@ -130,7 +130,7 @@ object Application extends ScorexLogging {
             (1 to 10) foreach { j =>
               (1 to Random.nextInt(110)) foreach { k =>
                 val assetId = if (Random.nextBoolean()) Some(issue.assetId) else None
-                val feeAsset = if (utxStorage.all().size + 100 < utxStorage.sizeLimit && Random.nextBoolean()) {
+                val feeAsset = if (utxStorage.all().size + 100 < settings.utxSize && Random.nextBoolean()) {
                   Some(issue.assetId)
                 } else {
                   None
@@ -189,7 +189,7 @@ object Application extends ScorexLogging {
 
         def genDelete(assetId: Array[Byte]): scala.util.Try[BurnTransaction] = scala.util.Try {
           val request = BurnRequest(sender.address, Base58.encode(assetId), genAmount(Some(assetId)), genFee())
-          val tx:BurnTransaction = BurnTransaction.create(sender,
+          val tx: BurnTransaction = BurnTransaction.create(sender,
             Base58.decode(request.assetId).get,
             request.quantity,
             request.fee,
