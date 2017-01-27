@@ -18,6 +18,9 @@ trait OrderMatchCreator {
   val omss = storedState.validators.filter(_.isInstanceOf[OrderMatchStoredState]).head
     .asInstanceOf[OrderMatchStoredState]
 
+  //TODO dirty hack
+  val omExtension = storedState.extensions.filter(_.isInstanceOf[OrderMatchStoredState]).head.asInstanceOf[OrderMatchStoredState]
+
   private var txTime: Long = 0
 
   private def getTimestamp: Long = {
@@ -37,7 +40,11 @@ trait OrderMatchCreator {
 
   def calculateMatcherFee(buy: Order, sell: Order, amount: Long): (Long, Long) = {
     def calcFee(o: Order, amount: Long): Long = {
+<<<<<<< HEAD
       omss.findPrevOrderMatchTxs(o)
+=======
+      omExtension.findPrevOrderMatchTxs(o)
+>>>>>>> ab1c12b76b94c2705acf075e0b0ab9e82ebe1688
       val p = BigInt(amount) * o.matcherFee  / o.amount
       p.toLong
     }
