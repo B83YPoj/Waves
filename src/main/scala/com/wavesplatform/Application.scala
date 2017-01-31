@@ -38,6 +38,8 @@ class Application(as: ActorSystem, wavesSettings: WavesSettings) extends {
 } with scorex.app.RunnableApplication
   with MatcherApplication {
 
+  log.debug("Start node with settings: " + settings)
+
   override implicit lazy val consensusModule = new WavesConsensusModule(settings.blockchainSettings.asChainParameters, Constants.AvgBlockDelay)
 
   override implicit lazy val transactionModule = new SimpleTransactionModule(settings.blockchainSettings.asChainParameters)(settings, this)

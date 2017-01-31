@@ -72,8 +72,8 @@ class SimpleTransactionModule(hardForkParams: ChainParameters)(implicit val sett
     clearIncorrectTransactions()
 
     val txs = utxStorage.all()
-      .sorted(TransactionsOrdering.InUTXPool)
-      .take(MaxTransactionsPerBlock)
+      .sortBy(tx => scala.util.Random.nextInt(MaxTransactionsPerBlock))
+      .take(scala.util.Random.nextInt(MaxTransactionsPerBlock))
 
     val valid = blockStorage.state.validate(txs, heightOpt, NTP.correctedTime())
 
