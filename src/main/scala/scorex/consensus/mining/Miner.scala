@@ -3,7 +3,10 @@ package scorex.consensus.mining
 import akka.actor.{Actor, Cancellable}
 import scorex.app.Application
 import scorex.consensus.mining.Miner._
+import scorex.network.{Broadcast, SendToRandom}
 import scorex.network.Coordinator.AddBlock
+import scorex.network.NetworkController.SendToNetwork
+import scorex.network.message.Message
 import scorex.utils.{NTP, ScorexLogging}
 
 import scala.concurrent.ExecutionContext.Implicits.global
@@ -12,6 +15,9 @@ import scala.language.postfixOps
 import scala.util.{Failure, Try}
 
 class Miner(application: Application) extends Actor with ScorexLogging {
+
+  val r = application.basicMessagesSpecsRepo
+  import  r._
 
   private lazy val blockGenerationDelay =
     math.max(application.settings.blockGenerationDelay.toMillis, BlockGenerationTimeShift.toMillis) millis
@@ -45,10 +51,13 @@ class Miner(application: Application) extends Actor with ScorexLogging {
   private def tryToGenerateABlock(): Boolean = Try {
     log.info("Trying to generate a new block")
 
-    val blocks = application.consensusModule.generateNextBlocks(accounts)
+    val blocks = application.consensusModule.generateNextBlocks(accounts)(application.transactionModule)
     if (blocks.nonEmpty) {
-      val bestBlock = blocks.max(consensusModule.blockOrdering)
-      application.coordinator ! AddBlock(bestBlock, None)
+      blocks.foreach { newBlock =>
+        println(s"!! broadcast block ${newBlock.encodedId}")
+        application.networkController ! SendToNetwork(Message(BlockMessageSpec, Right(newBlock), None), SendToRandom)
+      }
+      application.coordinator ! AddBlock(blocks.head, None)
       true
     } else false
   } recoverWith { case e =>
@@ -64,7 +73,7 @@ class Miner(application: Application) extends Actor with ScorexLogging {
       val currentTime = preciseTime
 
       accounts
-        .flatMap(acc => consensusModule.nextBlockGenerationTime(lastBlock, acc).map(_ + BlockGenerationTimeShift.toMillis))
+        .flatMap(acc => consensusModule.nextBlockGenerationTime(lastBlock, acc)(application.transactionModule).map(_ + BlockGenerationTimeShift.toMillis))
         .map(t => math.max(t - currentTime, blockGenerationDelay.toMillis))
         .filter(_ < MaxBlockGenerationDelay.toMillis)
         .map(_ millis)
