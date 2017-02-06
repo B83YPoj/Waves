@@ -15,11 +15,11 @@ import scorex.transaction.SimpleTransactionModule._
 import scorex.transaction.TransactionModule
 import scorex.transaction.assets.exchange._
 import scorex.transaction.state.database.blockchain.StoredState
-import scorex.utils.{ByteArray, NTP, ScorexLogging}
+import scorex.utils.{NTP, ScorexLogging}
 import scorex.wallet.Wallet
 
 import scala.annotation.tailrec
-import scala.collection.JavaConversions._
+import scala.collection.JavaConverters._
 import scala.concurrent.ExecutionContext.Implicits.global
 
 class OrderBookActor(assetPair: AssetPair, val storedState: StoredState,
@@ -30,7 +30,6 @@ class OrderBookActor(assetPair: AssetPair, val storedState: StoredState,
   override def persistenceId: String = OrderBookActor.name(assetPair)
 
   private var orderBook = OrderBook.empty
-  private var restoreState = true
 
   context.system.scheduler.schedule(settings.snapshotInterval, settings.snapshotInterval, self, SaveSnapshot)
 
@@ -51,7 +50,7 @@ class OrderBookActor(assetPair: AssetPair, val storedState: StoredState,
       handleGetOrderBook(pair, depth)
     case SaveSnapshot =>
       deleteSnapshots(SnapshotSelectionCriteria.Latest)
-      saveSnapshot(Snapshot(orderBook, ordersRemainingAmount.cache.asMap().toMap))
+      saveSnapshot(Snapshot(orderBook, ordersRemainingAmount.cache.asMap().asScala.toMap))
     case SaveSnapshotSuccess(metadata) =>
       log.info(s"Snapshot saved with metadata $metadata")
     case SaveSnapshotFailure(metadata, reason) =>
@@ -66,17 +65,19 @@ class OrderBookActor(assetPair: AssetPair, val storedState: StoredState,
     sender() ! GetOrderStatusResponse(getOrderStatus(id))
   }
 
-  def handleCancelOrder(cancel: CancelOrder) = {
+  private def handleCancelOrder(cancel: CancelOrder) = {
     val v = validateCancelOrder(cancel)
     if (v) {
-      persist(OrderBook.cancelOrder(orderBook, cancel.orderId)) {
-        case c@Some(Events.OrderCanceled(lo)) if cancel.req.sender == lo.order.sender =>
-          handleCancelEvent(c.get)
-          sender() ! OrderCanceled(cancel.orderId)
+      OrderBook.cancelOrder(orderBook, cancel.orderId) match {
+        case Some(oc) if cancel.req.sender == oc.limitOrder.order.sender =>
+          persist(oc) { _ =>
+            handleCancelEvent(oc)
+            sender() ! OrderCanceled(cancel.orderId)
+          }
         case _ => sender() ! OrderCancelRejected("Order not found")
       }
     } else {
-      sender() ! OrderCancelRejected(v.messages)
+      sender() ! OrderCancelRejected(v.messages())
     }
   }
 
@@ -93,7 +94,7 @@ class OrderBookActor(assetPair: AssetPair, val storedState: StoredState,
   override def receiveRecover: Receive = {
     case evt: Event => log.debug("Event: {}", evt); applyEvent(evt)
     case RecoveryCompleted => log.info(assetPair.toString() + " - Recovery completed!");
-    case SnapshotOffer(metadata, snapshot: Snapshot) =>
+    case SnapshotOffer(_, snapshot: Snapshot) =>
       log.debug(s"Recovering OrderBook from snapshot: $snapshot for $persistenceId")
       orderBook = snapshot.orderBook
       recoverFromOrderBook(orderBook)
@@ -106,7 +107,7 @@ class OrderBookActor(assetPair: AssetPair, val storedState: StoredState,
       sender() ! OrderAccepted(order)
       matchOrder(LimitOrder(order))
     } else {
-      sender() ! OrderRejected(v.messages)
+      sender() ! OrderRejected(v.messages())
     }
   }
 
@@ -116,7 +117,6 @@ class OrderBookActor(assetPair: AssetPair, val storedState: StoredState,
       case OrderAdded(o) => didOrderAccepted(o)
       case e: OrderExecuted => didOrderExecuted(e)
       case e: Events.OrderCanceled => didOrderCanceled(e)
-      case _ =>
     }
   }
 
@@ -141,16 +141,16 @@ class OrderBookActor(assetPair: AssetPair, val storedState: StoredState,
       case e@OrderExecuted(o, c) =>
         val txVal = createTransaction(o, c)
         txVal match {
-          case Right(tx)if isValid(tx)=>
+          case Right(tx) if isValid(tx) =>
             sendToNetwork(tx)
             processEvent(e)
             if (e.submittedRemaining > 0)
               Some(o.partial(e.submittedRemaining))
             else None
-        case _ =>
-          val canceled = Events.OrderCanceled(c)
-          processEvent(canceled)
-          Some(o)
+          case _ =>
+            val canceled = Events.OrderCanceled(c)
+            processEvent(canceled)
+            Some(o)
         }
       case _ => None
     }
@@ -231,21 +231,18 @@ object OrderBookActor {
 
   // Direct requests
   case object GetOrdersRequest
+
   case object GetBidOrdersRequest
+
   case object GetAskOrdersRequest
+
   case class GetOrdersResponse(orders: Seq[LimitOrder])
 
   case object SaveSnapshot
 
-  @SerialVersionUID(-5350485695558994597L)
   case class Snapshot(orderBook: OrderBook, history: Map[String, (Long, Long)])
 
-  val bidsOrdering: Ordering[Long] = new Ordering[Long] {
-    def compare(x: Long, y: Long): Int = -Ordering.Long.compare(x, y)
-  }
-
-  val asksOrdering: Ordering[Long] = new Ordering[Long] {
-    def compare(x: Long, y: Long): Int = Ordering.Long.compare(x, y)
-  }
+  val bidsOrdering: Ordering[Long] = (x: Long, y: Long) => -Ordering.Long.compare(x, y)
+  val asksOrdering: Ordering[Long] = (x: Long, y: Long) => Ordering.Long.compare(x, y)
 }
 
