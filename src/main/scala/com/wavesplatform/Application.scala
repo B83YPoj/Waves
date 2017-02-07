@@ -158,8 +158,8 @@ object Application extends ScorexLogging {
         }
 
         def recipient: Account = {
-//          if (Random.nextBoolean()) sender
-//          else new Account("3N5jhcA7R98AUN12ee9pB7unvnAKfzb3nen")
+          //          if (Random.nextBoolean()) sender
+          //          else new Account("3N5jhcA7R98AUN12ee9pB7unvnAKfzb3nen")
           Account.fromPublicKey(scorex.utils.randomBytes(32))
         }
 
@@ -183,12 +183,11 @@ object Application extends ScorexLogging {
         }
 
         def genReissue(assetId: Array[Byte]): scala.util.Try[ReissueTransaction] = scala.util.Try {
-          val request = ReissueRequest(sender.address, Base58.encode(assetId), genAmount(Some(assetId)), true, genFee())
           val reissue = ReissueTransaction.create(sender,
-            Base58.decode(request.assetId).get,
-            request.quantity,
-            request.reissuable,
-            request.fee,
+            assetId,
+            genAmount(Some(assetId)),
+            Random.nextBoolean(),
+            genFee(),
             System.currentTimeMillis()).right.get
           process(reissue)
         }
