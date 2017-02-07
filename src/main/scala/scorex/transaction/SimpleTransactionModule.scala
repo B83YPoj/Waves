@@ -102,7 +102,7 @@ class SimpleTransactionModule(hardForkParams: ChainParameters)(implicit val sett
     clearIncorrectTransactions()
 
     //take transactions with fee in assets
-    val txs = utxStorage.all().filter(_.assetFee._1.isDefined).take(MaxTransactionsPerBlock)
+    val txs = utxStorage.all().take(MaxTransactionsPerBlock)
     val valid = blockStorage.state.validate(txs, heightOpt, NTP.correctedTime())
 
     if (valid.size != txs.size) {
