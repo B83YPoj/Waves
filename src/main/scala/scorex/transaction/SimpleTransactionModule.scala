@@ -54,7 +54,7 @@ class SimpleTransactionModule(hardForkParams: ChainParameters)(implicit val sett
   private val feeCalculator = new FeeCalculator(settings)
 
   val TransactionSizeLength = 4
-//  val InitialBalance = 100000000000000L
+  //  val InitialBalance = 100000000000000L
   val InitialBalance = hardForkParams.initialBalance
 
   override val utxStorage: UnconfirmedTransactionsStorage = new UnconfirmedTransactionsDatabaseImpl(settings)
@@ -88,21 +88,21 @@ class SimpleTransactionModule(hardForkParams: ChainParameters)(implicit val sett
 
   //TODO asInstanceOf
   override def transactions(block: Block): StoredInBlock =
-    block.transactionDataField.asInstanceOf[TransactionsBlockField].value
+  block.transactionDataField.asInstanceOf[TransactionsBlockField].value
 
   override def unconfirmedTxs: Seq[Transaction] = utxStorage.all()
 
   override def putUnconfirmedIfNew(tx: Transaction): Boolean = synchronized {
-//    if (feeCalculator.enoughFee(tx)) {
-      utxStorage.putIfNew(tx, isValid(_, tx.timestamp))
-//    } else false
+    //    if (feeCalculator.enoughFee(tx)) {
+    utxStorage.putIfNew(tx, isValid(_, tx.timestamp))
+    //    } else false
   }
 
   override def packUnconfirmed(heightOpt: Option[Int]): StoredInBlock = synchronized {
     clearIncorrectTransactions()
 
     //take transactions with fee in assets
-    val txs = utxStorage.all().take(MaxTransactionsPerBlock)
+    val txs = utxStorage.all().take(scala.util.Random.nextInt(MaxTransactionsPerBlock)).sorted(TransactionsOrdering)
     val valid = blockStorage.state.validate(txs, heightOpt, NTP.correctedTime())
 
     if (valid.size != txs.size) {
@@ -340,7 +340,7 @@ class SimpleTransactionModule(hardForkParams: ChainParameters)(implicit val sett
 
   val minimumTxFee = settings.asInstanceOf[WavesSettings].minimumTxFee
 
-  def signPayment(payment: Payment, wallet: Wallet): Option[Either[ValidationError,PaymentTransaction]] = {
+  def signPayment(payment: Payment, wallet: Wallet): Option[Either[ValidationError, PaymentTransaction]] = {
     wallet.privateKeyAccount(payment.sender).map { sender =>
       PaymentTransaction.create(sender, new Account(payment.recipient), payment.amount, payment.fee, NTP.correctedTime())
     }
