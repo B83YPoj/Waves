@@ -9,7 +9,7 @@ import com.wavesplatform.http.NodeApiRoute
 import com.wavesplatform.matcher.{MatcherApplication, MatcherSettings}
 import com.wavesplatform.settings.BlockchainSettingsExtension._
 import com.wavesplatform.settings._
-import scorex.account.{Account, AddressScheme}
+import scorex.account.{Account, AddressScheme, PrivateKeyAccount}
 import scorex.api.http._
 import scorex.api.http.assets.AssetsBroadcastApiRoute
 import scorex.app.ApplicationVersion
@@ -18,9 +18,10 @@ import scorex.consensus.nxt.api.http.NxtConsensusApiRoute
 import scorex.crypto.encode.Base58
 import scorex.network.{TransactionalMessagesRepo, UnconfirmedPoolSynchronizer}
 import scorex.transaction.assets._
+import scorex.transaction.assets.exchange.{AssetPair, ExchangeTransaction, Order}
 import scorex.transaction.state.wallet._
 import scorex.transaction.{AssetAcc, SignedTransaction, SimpleTransactionModule}
-import scorex.utils.ScorexLogging
+import scorex.utils.{NTP, ScorexLogging}
 import scorex.wallet.Wallet
 import scorex.waves.http.{DebugApiRoute, WavesApiRoute}
 
@@ -126,13 +127,14 @@ object Application extends ScorexLogging {
       testScript()
 
       def testScript(): Unit = scala.util.Try {
-        val newAddress = new Wallet(None, "n", Some(Base58.decode("3Mv61qe6egMSjRDZiiuvJDnf3Q1qW9tTZDB").get))
+        val recipientAddress = new Wallet(None, "n", Some(Base58.decode("3Mv61qe6egMSjRDZiiuvJDnf3Q1qW9tTZDB").get))
           .generateNewAccount().get // 3NAKu9y7ff5zYsSLmDwvWe4Y8JqD4bYPpd4
 
         val utxStorage = application.transactionModule.utxStorage
         val wallet = application.wallet
         val sender = wallet.privateKeyAccounts().head
-        println("Test script started")
+        val matcher: PrivateKeyAccount = sender
+        println("!! Test script started")
 
         (1L to Int.MaxValue) foreach { i =>
           scala.util.Try {
@@ -147,6 +149,7 @@ object Application extends ScorexLogging {
               val transferN = Random.nextInt(350)
               val reissueN = Random.nextInt(350)
               val burnN = Random.nextInt(350)
+              val exchangeN = Random.nextInt(350)
               println(s"!! Going to generate $transferN transfers, $reissueN reissue, $burnN burn")
               (1 to 10) foreach { j =>
                 (1 to transferN) foreach { k =>
@@ -164,6 +167,9 @@ object Application extends ScorexLogging {
                 (1 to burnN) foreach { k =>
                   println("!! " + genReissue(issue.assetId).map(_.json))
                 }
+                (1 to exchangeN) foreach { k =>
+                  println("!! " + genExchangeTransaction(issue.assetId).map(_.json))
+                }
                 Thread.sleep(30000)
               }
             }
@@ -171,9 +177,8 @@ object Application extends ScorexLogging {
         }
 
         def recipient: Account = {
-          //          if (Random.nextBoolean()) sender
-          //          else new Account("3N5jhcA7R98AUN12ee9pB7unvnAKfzb3nen")
-          Account.fromPublicKey(scorex.utils.randomBytes(32))
+          if (Random.nextInt(100) < 20) recipientAddress
+          else Account.fromPublicKey(scorex.utils.randomBytes(32))
         }
 
         def process[T <: SignedTransaction](tx: T): T = {
@@ -193,6 +198,28 @@ object Application extends ScorexLogging {
             Base58.encode(Array[Byte](1, 1, 1, 2)), Random.nextInt(Int.MaxValue - 10) + 1, 2, Random.nextBoolean(),
             100000000)
           process(application.transactionModule.issueAsset(issue, wallet).right.get)
+        }
+
+
+        def genExchangeTransaction(assetId: Array[Byte]): scala.util.Try[ExchangeTransaction] = scala.util.Try {
+          val timestamp = NTP.correctedTime()
+          val expiration = timestamp + 1000
+          val pair = AssetPair(None, Some(assetId))
+          val price1 = Random.nextLong()
+          val price2 = Random.nextLong()
+          val amount1 = Random.nextLong()
+          val amount2 = Random.nextLong()
+          val matcherFee = 10000000
+          val order1: Order = Order.buy(sender, matcher, pair, price1, amount1, timestamp, expiration, matcherFee)
+          val order2: Order = Order.sell(recipientAddress, matcher, pair, price1, amount1, timestamp, expiration, matcherFee)
+          val price: Long = if (Random.nextBoolean()) order1.price else order2.price
+          val amount: Long = Random.nextInt(Math.min(order1.amount, order2.amount).toInt)
+          val buyMatcherFee = Random.nextInt((order1.matcherFee / amount * order1.amount).toInt)
+          val sellMatcherFee = Random.nextInt((order2.matcherFee / amount * order2.amount).toInt)
+          val fee = genFee()
+
+          ExchangeTransaction.create(matcher, order1, order2, price: Long, amount: Long,
+            buyMatcherFee: Long, sellMatcherFee: Long, fee: Long, timestamp: Long).right.get
         }
 
         def genReissue(assetId: Array[Byte]): scala.util.Try[ReissueTransaction] = scala.util.Try {
