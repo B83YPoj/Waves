@@ -1,9 +1,13 @@
 package com.wavesplatform
 
+import java.io.File
+
 import akka.actor.{ActorSystem, Props}
+import com.typesafe.config.ConfigFactory
 import com.wavesplatform.actor.RootActorSystem
 import com.wavesplatform.http.NodeApiRoute
-import com.wavesplatform.matcher.MatcherApplication
+import com.wavesplatform.matcher.{MatcherApplication, MatcherSettings}
+import com.wavesplatform.settings.BlockchainSettingsExtension._
 import com.wavesplatform.settings._
 import scorex.account.{Account, AddressScheme}
 import scorex.api.http._
@@ -13,21 +17,23 @@ import scorex.consensus.nxt.WavesConsensusModule
 import scorex.consensus.nxt.api.http.NxtConsensusApiRoute
 import scorex.crypto.encode.Base58
 import scorex.network.{TransactionalMessagesRepo, UnconfirmedPoolSynchronizer}
-import scorex.settings.Settings
 import scorex.transaction.assets._
 import scorex.transaction.state.wallet._
-import scorex.transaction.{AssetAcc, SignedTransaction}
+import scorex.transaction.{AssetAcc, SignedTransaction, SimpleTransactionModule}
 import scorex.utils.ScorexLogging
 import scorex.wallet.Wallet
 import scorex.waves.http.{DebugApiRoute, WavesApiRoute}
-import scorex.waves.transaction.WavesTransactionModule
 
 import scala.reflect.runtime.universe._
 import scala.util.{Failure, Random}
 
-class Application(as: ActorSystem, appSettings: WavesSettings) extends {
-  override implicit val settings = appSettings
-  override val applicationName = Constants.ApplicationName + appSettings.chainParams.addressScheme.chainId.toChar
+class Application(as: ActorSystem, wavesSettings: WavesSettings) extends {
+  val matcherSettings: MatcherSettings = wavesSettings.matcherSettings
+  val restAPISettings: RestAPISettings = wavesSettings.restAPISettings
+  override implicit val settings = wavesSettings
+
+  override val applicationName = Constants.ApplicationName +
+    wavesSettings.blockchainSettings.addressSchemeCharacter
   override val appVersion = {
     val parts = Constants.VersionString.split("\\.")
     ApplicationVersion(parts(0).toInt, parts(1).toInt, parts(2).split("-").head.toInt)
@@ -36,28 +42,28 @@ class Application(as: ActorSystem, appSettings: WavesSettings) extends {
 } with scorex.app.RunnableApplication
   with MatcherApplication {
 
-  override implicit lazy val consensusModule = new WavesConsensusModule(settings.chainParams, Constants.AvgBlockDelay)
+  override implicit lazy val consensusModule = new WavesConsensusModule(settings.blockchainSettings.asChainParameters, Constants.AvgBlockDelay)
 
-  override implicit lazy val transactionModule = new WavesTransactionModule(settings.chainParams)(settings, this)
+  override implicit lazy val transactionModule = new SimpleTransactionModule(settings.blockchainSettings.asChainParameters)(settings, this)
 
   override lazy val blockStorage = transactionModule.blockStorage
 
   lazy val consensusApiRoute = new NxtConsensusApiRoute(this)
 
   override lazy val apiRoutes = Seq(
-    BlocksApiRoute(this),
-    TransactionsApiRoute(this),
+    BlocksApiRoute(settings.restAPISettings, settings.checkpointsSettings, history, coordinator),
+    TransactionsApiRoute(settings.restAPISettings, blockStorage.state, history, transactionModule),
     consensusApiRoute,
-    WalletApiRoute(this),
-    PaymentApiRoute(this),
-    UtilsApiRoute(this),
-    PeersApiRoute(this),
-    AddressApiRoute(this),
-    DebugApiRoute(this),
-    WavesApiRoute(this),
-    AssetsApiRoute(this),
+    WalletApiRoute(settings.restAPISettings, wallet),
+    PaymentApiRoute(settings.restAPISettings, wallet, transactionModule),
+    UtilsApiRoute(settings.restAPISettings),
+    PeersApiRoute(settings.restAPISettings, peerManager, networkController),
+    AddressApiRoute(settings.restAPISettings, wallet, blockStorage.state),
+    DebugApiRoute(settings.restAPISettings, wallet, blockStorage),
+    WavesApiRoute(settings.restAPISettings, wallet, transactionModule),
+    AssetsApiRoute(settings.restAPISettings, wallet, blockStorage.state, transactionModule),
     NodeApiRoute(this),
-    AssetsBroadcastApiRoute(this)
+    AssetsBroadcastApiRoute(settings.restAPISettings, transactionModule)
   )
 
   override lazy val apiTypes = Seq(
@@ -78,31 +84,38 @@ class Application(as: ActorSystem, appSettings: WavesSettings) extends {
 
   override lazy val additionalMessageSpecs = TransactionalMessagesRepo.specs
 
-  //checks
-  require(transactionModule.balancesSupport)
-  require(transactionModule.accountWatchingSupport)
-
-  actorSystem.actorOf(Props(classOf[UnconfirmedPoolSynchronizer], transactionModule, settings, networkController))
+  actorSystem.actorOf(Props(classOf[UnconfirmedPoolSynchronizer], transactionModule, settings.utxSettings, networkController))
 
   override def run(): Unit = {
     super.run()
 
-    if (settings.isRunMatcher) runMatcher()
+    if (matcherSettings.enable) runMatcher()
   }
 }
 
 object Application extends ScorexLogging {
   def main(args: Array[String]): Unit = {
-    log.info("Starting with args: {} ", args)
-    val filename = args.headOption.getOrElse("settings.json")
-    val settings = new WavesSettings(Settings.readSettingsJson(filename))
-    RootActorSystem.start("wavesplatform", settings) { actorSystem =>
+    log.info("Starting...")
+
+    val maybeUserConfig = for {
+      maybeFilename <- args.headOption
+      file = new File(maybeFilename)
+      if file.exists
+    } yield ConfigFactory.parseFile(file)
+
+    val config = maybeUserConfig.foldLeft(ConfigFactory.load()) { (default, user) => user.withFallback(default) }
+
+    val settings = WavesSettings.fromConfig(config.resolve)
+
+    RootActorSystem.start("wavesplatform", settings.matcherSettings) { actorSystem =>
       configureLogging(settings)
 
       // Initialize global var with actual address scheme
-      AddressScheme.current = settings.chainParams.addressScheme
+      AddressScheme.current = new AddressScheme {
+        override val chainId: Byte = settings.blockchainSettings.addressSchemeCharacter.toByte
+      }
 
-      log.info(s"${Constants.AgentName} Blockchain Id: ${settings.chainParams.addressScheme.chainId}")
+      log.info(s"${Constants.AgentName} Blockchain Id: ${settings.blockchainSettings.addressSchemeCharacter}")
 
       val application = new Application(actorSystem, settings)
       application.run()
@@ -238,6 +251,7 @@ object Application extends ScorexLogging {
     val lc = LoggerFactory.getILoggerFactory.asInstanceOf[LoggerContext]
     val rootLogger = lc.getLogger(Logger.ROOT_LOGGER_NAME)
     settings.loggingLevel match {
+    <<<<<<< HEAD
       case "info" => rootLogger.setLevel(Level.INFO)
       case "debug" => rootLogger.setLevel(Level.DEBUG)
       case "error" => rootLogger.setLevel(Level.ERROR)
@@ -246,6 +260,12 @@ object Application extends ScorexLogging {
       case _ =>
         log.warn(s"Unknown loggingLevel = ${settings.loggingLevel}. Going to set INFO level")
         rootLogger.setLevel(Level.INFO)
+        =======
+      case LogLevel.DEBUG => rootLogger.setLevel(Level.DEBUG)
+      case LogLevel.INFO => rootLogger.setLevel(Level.INFO)
+      case LogLevel.WARN => rootLogger.setLevel(Level.WARN)
+      case LogLevel.ERROR => rootLogger.setLevel(Level.ERROR)
+        >>>>>>> master
     }
   }
 }

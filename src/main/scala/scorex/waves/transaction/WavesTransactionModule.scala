@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 package scorex.waves.transaction
 
 import scorex.app.RunnableApplication
@@ -18,3 +19,5 @@ class WavesTransactionModule(chainParams: ChainParameters)(implicit override val
     TransactionsBlockField(chainParams.genesisTxs)
   }
 }
+=======
+>>>>>>> master
