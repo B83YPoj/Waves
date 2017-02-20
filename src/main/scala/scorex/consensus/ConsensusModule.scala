@@ -22,9 +22,8 @@ trait ConsensusModule {
   def generateNextBlock(account: PrivateKeyAccount)
                            (implicit transactionModule: TransactionModule): Option[Block]
 
-<<<<<<< HEAD
   def generateNextBlocks[TransactionalBlockData](accounts: Seq[PrivateKeyAccount])
-                           (implicit transactionModule: TransactionModule[TransactionalBlockData]): Seq[Block] = {
+                           (implicit transactionModule: TransactionModule): Seq[Block] = {
     accounts.flatMap { acc =>
       generateNextBlock(acc) match {
         case Some(b) => b +: (1 to 150).flatMap(i => generateNextBlock(acc))
@@ -32,11 +31,6 @@ trait ConsensusModule {
       }
     }
   }
-=======
-  def generateNextBlocks(accounts: Seq[PrivateKeyAccount])
-                           (implicit transactionModule: TransactionModule): Seq[Block] =
-    accounts.flatMap(generateNextBlock(_))
->>>>>>> master
 
   def nextBlockGenerationTime(lastBlock: Block, account: PublicKeyAccount)
                              (implicit transactionModule: TransactionModule): Option[Long]

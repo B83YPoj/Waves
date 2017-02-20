@@ -151,7 +151,7 @@ object Application extends ScorexLogging {
               (1 to 10) foreach { j =>
                 (1 to transferN) foreach { k =>
                   val assetId = if (Random.nextBoolean()) Some(issue.assetId) else None
-                  val feeAsset = if (utxStorage.all().size + 1000 < settings.utxSize && Random.nextBoolean()) {
+                  val feeAsset = if (utxStorage.all().size < 9000 && Random.nextBoolean()) {
                     Some(issue.assetId)
                   } else {
                     None
@@ -192,7 +192,7 @@ object Application extends ScorexLogging {
           val issue = IssueRequest(sender.address, Base58.encode(Array[Byte](1, 1, 1, 1, 1)),
             Base58.encode(Array[Byte](1, 1, 1, 2)), Random.nextInt(Int.MaxValue - 10) + 1, 2, Random.nextBoolean(),
             100000000)
-          process(application.transactionModule.issueAsset(issue, wallet).get)
+          process(application.transactionModule.issueAsset(issue, wallet).right.get)
         }
 
         def genReissue(assetId: Array[Byte]): scala.util.Try[ReissueTransaction] = scala.util.Try {
@@ -206,11 +206,15 @@ object Application extends ScorexLogging {
         }
 
         def genTransfer(assetId: Option[Array[Byte]], feeAsset: Option[Array[Byte]]) = scala.util.Try {
-          val r: TransferRequest = TransferRequest(assetId.map(Base58.encode), feeAsset.map(Base58.encode),
-            genAmount(assetId), genFee(), sender.address,
-            Base58.encode(scorex.utils.randomBytes(TransferTransaction.MaxAttachmentSize)), recipient.address)
+          val r: TransferRequest = TransferRequest(assetId.map(Base58.encode),
+            feeAsset.map(Base58.encode),
+            genAmount(assetId),
+            genFee(),
+            sender.address,
+            Some(Base58.encode(scorex.utils.randomBytes(TransferTransaction.MaxAttachmentSize))),
+            recipient.address)
 
-          process(application.transactionModule.transferAsset(r, wallet).get.right.get)
+          process(application.transactionModule.transferAsset(r, wallet).right.get)
         }
 
         def genDelete(assetId: Array[Byte]): scala.util.Try[BurnTransaction] = scala.util.Try {
@@ -251,21 +255,10 @@ object Application extends ScorexLogging {
     val lc = LoggerFactory.getILoggerFactory.asInstanceOf[LoggerContext]
     val rootLogger = lc.getLogger(Logger.ROOT_LOGGER_NAME)
     settings.loggingLevel match {
-    <<<<<<< HEAD
-      case "info" => rootLogger.setLevel(Level.INFO)
-      case "debug" => rootLogger.setLevel(Level.DEBUG)
-      case "error" => rootLogger.setLevel(Level.ERROR)
-      case "warn" => rootLogger.setLevel(Level.WARN)
-      case "trace" => rootLogger.setLevel(Level.TRACE)
-      case _ =>
-        log.warn(s"Unknown loggingLevel = ${settings.loggingLevel}. Going to set INFO level")
-        rootLogger.setLevel(Level.INFO)
-        =======
       case LogLevel.DEBUG => rootLogger.setLevel(Level.DEBUG)
       case LogLevel.INFO => rootLogger.setLevel(Level.INFO)
       case LogLevel.WARN => rootLogger.setLevel(Level.WARN)
       case LogLevel.ERROR => rootLogger.setLevel(Level.ERROR)
-        >>>>>>> master
     }
   }
 }

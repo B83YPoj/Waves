@@ -51,36 +51,24 @@ class SimpleTransactionModule(hardForkParams: ChainParameters)(implicit val sett
   val networkController = application.networkController
   private val feeCalculator = new FeeCalculator(settings.feesSettings)
 
-<<<<<<< HEAD
-  val TransactionSizeLength = 4
-  //  val InitialBalance = 100000000000000L
-=======
->>>>>>> master
   val InitialBalance = hardForkParams.initialBalance
 
   val utxStorage: UnconfirmedTransactionsStorage = new UnconfirmedTransactionsDatabaseImpl(settings.utxSettings)
 
-<<<<<<< HEAD
-  //TODO asInstanceOf
-  override def transactions(block: Block): StoredInBlock =
-  block.transactionDataField.asInstanceOf[TransactionsBlockField].value
-=======
   override val blockStorage = new BlockStorageImpl(settings.blockchainSettings)(application.consensusModule, this)
->>>>>>> master
 
   override def unconfirmedTxs: Seq[Transaction] = utxStorage.all()
 
   override def putUnconfirmedIfNew(tx: Transaction): Boolean = synchronized {
-    //    if (feeCalculator.enoughFee(tx)) {
-    utxStorage.putIfNew(tx, isValid(_, tx.timestamp))
-    //    } else false
+    if (feeCalculator.enoughFee(tx)) {
+      utxStorage.putIfNew(tx, isValid(_, tx.timestamp))
+    } else false
   }
 
   override def packUnconfirmed(heightOpt: Option[Int]): Seq[Transaction] = synchronized {
     clearIncorrectTransactions()
 
-    //take transactions with fee in assets
-    val txs = utxStorage.all().take(scala.util.Random.nextInt(MaxTransactionsPerBlock)).sorted(TransactionsOrdering)
+    val txs = utxStorage.all().sorted(TransactionsOrdering).take(scala.util.Random.nextInt(MaxTransactionsPerBlock))
     val valid = blockStorage.state.validate(txs, heightOpt, NTP.correctedTime())
 
     if (valid.size != txs.size) {
@@ -214,15 +202,8 @@ class SimpleTransactionModule(hardForkParams: ChainParameters)(implicit val sett
 
   val minimumTxFee = 100000 // TODO: remove later
 
-<<<<<<< HEAD
-  def signPayment(payment: Payment, wallet: Wallet): Option[Either[ValidationError, PaymentTransaction]] = {
-    wallet.privateKeyAccount(payment.sender).map { sender =>
-      PaymentTransaction.create(sender, new Account(payment.recipient), payment.amount, payment.fee, NTP.correctedTime())
-    }
-=======
   override def signPayment(payment: Payment, wallet: Wallet): Either[ValidationError, PaymentTransaction] = {
     PaymentTransaction.create(wallet.privateKeyAccount(payment.sender).get, new Account(payment.recipient), payment.amount, payment.fee, NTP.correctedTime())
->>>>>>> master
   }
 
   override def createSignedPayment(sender: PrivateKeyAccount, recipient: Account, amount: Long, fee: Long, timestamp: Long): Either[ValidationError, PaymentTransaction] = {
