@@ -104,7 +104,9 @@ object Application extends ScorexLogging {
       if file.exists
     } yield ConfigFactory.parseFile(file)
 
-    val config = maybeUserConfig.foldLeft(ConfigFactory.load()) { (default, user) => user.withFallback(default) }
+    val config = maybeUserConfig.foldLeft(ConfigFactory.defaultApplication().withFallback(ConfigFactory.load())) {
+      (default, user) => user.withFallback(default)
+    }
 
     val settings = WavesSettings.fromConfig(config.resolve)
 
