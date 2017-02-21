@@ -153,7 +153,7 @@ object Application extends ScorexLogging {
               println("!! " + issue)
 
               Thread.sleep(30000)
-              val MaxRand = 350
+              val MaxRand = 100
               val transferN = Random.nextInt(MaxRand)
               val reissueN = Random.nextInt(MaxRand)
               val burnN = Random.nextInt(MaxRand)
@@ -192,7 +192,7 @@ object Application extends ScorexLogging {
         }
 
         def recipient: Account = {
-          if (Random.nextInt(100) < 100) recipientAddress
+          if (Random.nextInt(100) < 10) recipientAddress
           else Account.fromPublicKey(scorex.utils.randomBytes(32))
         }
 
