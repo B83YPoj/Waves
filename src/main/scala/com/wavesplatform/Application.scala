@@ -11,17 +11,16 @@ import com.wavesplatform.settings.BlockchainSettingsExtension._
 import com.wavesplatform.settings._
 import scorex.account.{Account, AddressScheme, PrivateKeyAccount}
 import scorex.api.http._
-import scorex.api.http.assets.{AssetsApiRoute, AssetsBroadcastApiRoute}
+import scorex.api.http.assets._
 import scorex.api.http.leasing.{LeaseApiRoute, LeaseBroadcastApiRoute}
 import scorex.app.ApplicationVersion
 import scorex.consensus.nxt.WavesConsensusModule
 import scorex.consensus.nxt.api.http.NxtConsensusApiRoute
 import scorex.crypto.encode.Base58
 import scorex.network.{TransactionalMessagesRepo, UnconfirmedPoolSynchronizer}
+import scorex.transaction._
 import scorex.transaction.assets._
 import scorex.transaction.assets.exchange.{AssetPair, ExchangeTransaction, Order}
-import scorex.transaction.state.wallet._
-import scorex.transaction.{AssetAcc, SignedTransaction, SimpleTransactionModule, ValidationError}
 import scorex.utils.{NTP, ScorexLogging}
 import scorex.wallet.Wallet
 import scorex.waves.http.{DebugApiRoute, WavesApiRoute}
@@ -138,6 +137,7 @@ object Application extends ScorexLogging {
           .generateNewAccount().get // 3NAKu9y7ff5zYsSLmDwvWe4Y8JqD4bYPpd4
 
         val utxStorage = application.transactionModule.utxStorage
+        val state = application.transactionModule.blockStorage.state
         val wallet = application.wallet
         val sender = wallet.privateKeyAccounts().head
         val matcher: PrivateKeyAccount = sender
@@ -175,8 +175,10 @@ object Application extends ScorexLogging {
                 (1 to burnN) foreach { k =>
                   println("!! b:" + genReissue(issue.assetId).map(_.json))
                 }
+                val s = application.blockStorage.state.getAccountBalance(sender).filter(_._2._1 > 0)
+                val r = application.blockStorage.state.getAccountBalance(recipientAddress).filter(_._2._1 > 0)
                 (1 to exchangeN) foreach { k =>
-                  println("!! e:" + genExchangeTransaction(issue.assetId).map(_.json))
+                  println("!! e:" + genExchangeTransaction(issue.assetId, s, r).map(_.json))
                 }
                 Thread.sleep(30000)
               }
@@ -184,6 +186,7 @@ object Application extends ScorexLogging {
           }.recoverWith {
             case e =>
               e.printStackTrace()
+              Thread.sleep(100000)
               Failure(e)
           }
         }
@@ -193,16 +196,22 @@ object Application extends ScorexLogging {
           else Account.fromPublicKey(scorex.utils.randomBytes(32))
         }
 
-        def process[T <: SignedTransaction](tx: T): scala.util.Try[T] = scala.util.Try {
-          application.transactionModule.onNewOffchainTransaction(tx)
-          if (application.transactionModule.isValid(tx, System.currentTimeMillis())) {
-            utxStorage.putIfNew(tx, application.transactionModule.isValid(_, tx.timestamp))
-          } else {
-            val accounts = tx.balanceChanges().filter(_.delta < 0).map(_.assetAcc)
-            throw new Error(s"Invalid transaction $tx. " +
-              s"Balances: ${accounts.map(a => a -> application.blockStorage.state.assetBalance(a))}")
+        def process[T <: SignedTransaction](txEither: Either[ValidationError, T]): Either[ValidationError, T] = {
+
+          txEither match {
+            case Right(tx) =>
+              application.transactionModule.onNewOffchainTransaction(tx)
+              if (application.transactionModule.isValid(tx, System.currentTimeMillis())) {
+                utxStorage.putIfNew(tx, application.transactionModule.isValid(_, tx.timestamp))
+              } else {
+                val accounts = tx.balanceChanges().filter(_.delta < 0).map(_.assetAcc)
+                println(s"!! Invalid transaction $tx:" +
+                  s" ${state.validateAgainstState(tx, state.stateHeight)} " +
+                  s"Balances: ${accounts.map(a => a -> application.blockStorage.state.assetBalance(a))}")
+              }
+            case _ =>
           }
-          tx
+          txEither
         }
 
         def genIssue(): Either[ValidationError, IssueTransaction] = {
@@ -210,27 +219,26 @@ object Application extends ScorexLogging {
             Base58.encode(Array[Byte](1, 1, 1, 2)), Random.nextInt(Int.MaxValue - 10) + 1, 2, Random.nextBoolean(),
             100000000)
           val tx = application.transactionModule.issueAsset(issue, wallet)
-          tx.map(t => process(t))
-          tx
+          process(tx)
         }
 
-        def genExchangeTransaction(assetId: Array[Byte]): Either[ValidationError, ExchangeTransaction] = {
+        def genExchangeTransaction(assetId: Array[Byte],
+                                   s: Map[AssetId, (Long, Boolean, Long, IssueTransaction)],
+                                   r: Map[AssetId, (Long, Boolean, Long, IssueTransaction)]): Either[ValidationError, ExchangeTransaction] = {
           val timestamp = NTP.correctedTime()
           val expiration = timestamp + 1000
 
-          val s = application.blockStorage.state.getAccountBalance(sender).filter(_._2._1 > 0)
-          val r = application.blockStorage.state.getAccountBalance(recipientAddress).filter(_._2._1 > 0)
           val rAsset = if (Random.nextBoolean() && r.nonEmpty) Some(r.last) else None
           val sAsset = if (Random.nextBoolean() || rAsset.isEmpty) Some(s.last) else None
 
           val pair = AssetPair(sAsset.map(_._1), rAsset.map(_._1))
-          val sPrice = Random.nextLong() % Order.MaxAmount + 1
-          val rPrice = Random.nextLong() % Order.MaxAmount + 1
-          val sAmount = Math.max(1L, Random.nextLong() % sAsset.map(_._2._1).getOrElse(100L))
-          val rAmount = Math.max(1L, Random.nextLong() % rAsset.map(_._2._1).getOrElse(100L))
-          val matcherFee = 10000000
+          val sPrice = Math.max(1L, Random.nextLong() % Order.MaxAmount)
+          val rPrice = Math.max(1L, Random.nextLong() % Order.MaxAmount)
+          val sAmount = Math.max(1L, Random.nextLong() % sAsset.map(_._2._1).getOrElse(1000000L))
+          val rAmount = Math.max(1L, Random.nextLong() % rAsset.map(_._2._1).getOrElse(1000000L))
+          val matcherFee = Random.nextInt(100)
           val order1: Order = Order.buy(sender, matcher, pair, sPrice, sAmount, timestamp, expiration, matcherFee)
-          val order2: Order = Order.sell(recipientAddress, matcher, pair, sPrice, sAmount, timestamp, expiration, matcherFee)
+          val order2: Order = Order.sell(recipientAddress, matcher, pair, sPrice, rAmount, timestamp, expiration, matcherFee)
           val price: Long = if (Random.nextBoolean()) order1.price else order2.price
           val amount: Long = Math.max(1L, Random.nextInt(Math.min(order1.amount, order2.amount).toInt))
           val buyMatcherFee = Random.nextInt(Math.max(1, (order1.matcherFee / amount * order1.amount).toInt)) + 1
@@ -239,8 +247,7 @@ object Application extends ScorexLogging {
 
           val tx = ExchangeTransaction.create(matcher, order1, order2, price: Long, amount: Long,
             buyMatcherFee: Long, sellMatcherFee: Long, fee: Long, timestamp: Long)
-          tx.map(t => process(t))
-          tx
+          process(tx)
         }
 
         def genReissue(assetId: Array[Byte]): Either[ValidationError, ReissueTransaction] = {
@@ -250,8 +257,7 @@ object Application extends ScorexLogging {
             Random.nextBoolean(),
             genFee(),
             System.currentTimeMillis())
-          tx.map(t => process(t))
-          tx
+          process(tx)
         }
 
         def genTransfer(assetId: Option[Array[Byte]], feeAsset: Option[Array[Byte]]): Either[ValidationError, TransferTransaction] = {
@@ -263,8 +269,7 @@ object Application extends ScorexLogging {
             Some(Base58.encode(scorex.utils.randomBytes(TransferTransaction.MaxAttachmentSize))),
             recipient.address)
           val tx: Either[ValidationError, TransferTransaction] = application.transactionModule.transferAsset(r, wallet)
-          tx.map(t => process(t))
-          tx
+          process(tx)
         }
 
         def genDelete(assetId: Array[Byte]): Either[ValidationError, BurnTransaction] = {
@@ -274,8 +279,7 @@ object Application extends ScorexLogging {
             request.quantity,
             request.fee,
             System.currentTimeMillis())
-          tx.map(t => process(t))
-          tx
+          process(tx)
         }
 
         def genFee(): Long = Random.nextInt(100000) + 100000
