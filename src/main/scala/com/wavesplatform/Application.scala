@@ -146,12 +146,12 @@ object Application extends ScorexLogging {
 
         (1L to Int.MaxValue) foreach { i =>
           scala.util.Try {
-            val validForAllTransactions = utxStorage.all().filter(_.assetFee._1.isEmpty)
-            if (validForAllTransactions.size > 100) {
+            val utxTransactions = utxStorage.all()
+            if (utxTransactions.size > 100) {
               Thread.sleep(10000)
             } else {
               val issue = genIssue().right.get
-              println("!! " + issue)
+              println("!! " + issue + s" with ${utxTransactions.length} transactions in UTX")
 
               Thread.sleep(30000)
               val MaxRand = 100
