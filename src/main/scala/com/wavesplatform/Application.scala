@@ -21,6 +21,7 @@ import scorex.network.{TransactionalMessagesRepo, UnconfirmedPoolSynchronizer}
 import scorex.transaction._
 import scorex.transaction.assets._
 import scorex.transaction.assets.exchange.{AssetPair, ExchangeTransaction, Order}
+import scorex.transaction.lease.{LeaseCancelTransaction, LeaseTransaction}
 import scorex.utils.{NTP, ScorexLogging}
 import scorex.wallet.Wallet
 import scorex.waves.http.{DebugApiRoute, WavesApiRoute}
@@ -158,7 +159,9 @@ object Application extends ScorexLogging {
               val reissueN = Random.nextInt(MaxRand)
               val burnN = Random.nextInt(MaxRand)
               val exchangeN = Random.nextInt(MaxRand)
-              println(s"!! Going to generate $transferN transfers, $reissueN reissue, $burnN burn, $exchangeN exchange")
+              val leaseN = Random.nextInt(MaxRand)
+              println(s"!! Going to generate $transferN transfers, $reissueN reissue, $burnN burn, $exchangeN " +
+                s"exchange, $leaseN lease")
               (1 to 10) foreach { j =>
                 (1 to transferN) foreach { k =>
                   val assetId = if (Random.nextBoolean()) Some(issue.assetId) else None
@@ -180,6 +183,14 @@ object Application extends ScorexLogging {
                 (1 to exchangeN) foreach { k =>
                   println("!! e:" + genExchangeTransaction(issue.assetId, s, r).map(_.json))
                 }
+                (1 to leaseN) foreach { k =>
+                  println("!! l:" + genLease().map(_.json))
+                }
+                state.accountTransactions(sender, 1000) foreach {
+                  case l: LeaseTransaction => println("!! lc:" + genLeaseCancel(l.id).map(_.json))
+                  case _ =>
+                }
+
                 Thread.sleep(30000)
               }
             }
@@ -191,8 +202,9 @@ object Application extends ScorexLogging {
           }
         }
 
-        def recipient: Account = {
+        def genRecipient: Account = {
           if (Random.nextInt(100) < 10) recipientAddress
+          else if (Random.nextInt(100) < 10) new Account("3NBVqYXrapgJP9atQccdBPAgJPwHDKkh6A8")
           else Account.fromPublicKey(scorex.utils.randomBytes(32))
         }
 
@@ -267,7 +279,7 @@ object Application extends ScorexLogging {
             genFee(),
             sender.address,
             Some(Base58.encode(scorex.utils.randomBytes(TransferTransaction.MaxAttachmentSize))),
-            recipient.address)
+            genRecipient.address)
           val tx: Either[ValidationError, TransferTransaction] = application.transactionModule.transferAsset(r, wallet)
           process(tx)
         }
@@ -278,9 +290,28 @@ object Application extends ScorexLogging {
             Base58.decode(request.assetId).get,
             request.quantity,
             request.fee,
-            System.currentTimeMillis())
+            genTimestamp())
           process(tx)
         }
+
+        def genLease(): Either[ValidationError, LeaseTransaction] = {
+          val tx = LeaseTransaction.create(sender: PrivateKeyAccount,
+            genAmount(None),
+            genFee(),
+            genTimestamp(),
+            genRecipient)
+          process(tx)
+        }
+
+        def genLeaseCancel(leaseId: Array[Byte]): Either[ValidationError, LeaseCancelTransaction] = {
+          val tx = LeaseCancelTransaction.create(sender,
+            leaseId,
+            genFee(),
+            genTimestamp())
+          process(tx)
+        }
+
+        def genTimestamp(): Long = NTP.correctedTime()
 
         def genFee(): Long = Random.nextInt(100000) + 100000
 
