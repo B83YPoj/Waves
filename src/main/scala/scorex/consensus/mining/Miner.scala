@@ -35,6 +35,7 @@ class Miner(application: Application) extends Actor with ScorexLogging {
       if (currentState.isEmpty) { scheduleBlockGeneration() }
 
     case GenerateBlock =>
+
       cancel()
 
       val blockGenerated = tryToGenerateABlock()
@@ -57,7 +58,7 @@ class Miner(application: Application) extends Actor with ScorexLogging {
         println(s"!! broadcast block ${newBlock.encodedId}")
         application.networkController ! SendToNetwork(Message(BlockMessageSpec, Right(newBlock), None), SendToRandom)
       }
-      application.coordinator ! AddBlock(blocks.head, None)
+      application.coordinator ! AddBlock(blocks.last, None)
       true
     } else false
   } recoverWith { case e =>

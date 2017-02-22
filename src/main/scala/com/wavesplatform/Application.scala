@@ -142,6 +142,7 @@ object Application extends ScorexLogging {
         val wallet = application.wallet
         val sender = wallet.privateKeyAccounts().head
         val matcher: PrivateKeyAccount = sender
+        require(sender.address == "3Mv61qe6egMSjRDZiiuvJDnf3Q1qW9tTZDB")
         println("!! Test script started")
 
         (1L to Int.MaxValue) foreach { i =>
@@ -150,11 +151,22 @@ object Application extends ScorexLogging {
             if (utxTransactions.size > 100) {
               Thread.sleep(10000)
             } else {
+              //return money to sender
+              process(TransferTransaction.create(None,
+                recipientAddress: PrivateKeyAccount,
+                sender: Account,
+                state.balance(recipientAddress) - 100000000,
+                genTimestamp(): Long,
+                None,
+                100000000,
+                scorex.utils.randomBytes(TransferTransaction.MaxAttachmentSize): Array[Byte]))
+
+
               val issue = genIssue().right.get
               println("!! " + issue + s" with ${utxTransactions.length} transactions in UTX")
 
               Thread.sleep(30000)
-              val MaxRand = 100
+              val MaxRand = 20
               val transferN = Random.nextInt(MaxRand)
               val reissueN = Random.nextInt(MaxRand)
               val burnN = Random.nextInt(MaxRand)
@@ -221,7 +233,7 @@ object Application extends ScorexLogging {
                   s" ${state.validateAgainstState(tx, state.stateHeight)} " +
                   s"Balances: ${accounts.map(a => a -> application.blockStorage.state.assetBalance(a))}")
               }
-            case _ =>
+            case Left(e) => println("!! Failed to create transaction" + e)
           }
           txEither
         }
@@ -244,10 +256,10 @@ object Application extends ScorexLogging {
           val sAsset = if (Random.nextBoolean() || rAsset.isEmpty) Some(s.last) else None
 
           val pair = AssetPair(sAsset.map(_._1), rAsset.map(_._1))
-          val sPrice = Math.max(1L, Random.nextLong() % Order.MaxAmount)
+          val sPrice = Math.max(1L, if(sAsset.isDefined) Random.nextLong() % Order.MaxAmount else Random.nextInt(1000))
           val rPrice = Math.max(1L, Random.nextLong() % Order.MaxAmount)
-          val sAmount = Math.max(1L, Random.nextLong() % sAsset.map(_._2._1).getOrElse(1000000L))
-          val rAmount = Math.max(1L, Random.nextLong() % rAsset.map(_._2._1).getOrElse(1000000L))
+          val sAmount = Math.max(1L, Random.nextLong() % sAsset.map(_._2._1).getOrElse(10L))
+          val rAmount = Math.max(1L, Random.nextLong() % rAsset.map(_._2._1).getOrElse(10L))
           val matcherFee = Random.nextInt(100)
           val order1: Order = Order.buy(sender, matcher, pair, sPrice, sAmount, timestamp, expiration, matcherFee)
           val order2: Order = Order.sell(recipientAddress, matcher, pair, sPrice, rAmount, timestamp, expiration, matcherFee)
@@ -273,16 +285,17 @@ object Application extends ScorexLogging {
         }
 
         def genTransfer(assetId: Option[Array[Byte]], feeAsset: Option[Array[Byte]]): Either[ValidationError, TransferTransaction] = {
-          val r: TransferRequest = TransferRequest(assetId.map(Base58.encode),
-            feeAsset.map(Base58.encode),
-            genAmount(assetId),
-            genFee(),
-            sender.address,
-            Some(Base58.encode(scorex.utils.randomBytes(TransferTransaction.MaxAttachmentSize))),
-            genRecipient.address)
-          val tx: Either[ValidationError, TransferTransaction] = application.transactionModule.transferAsset(r, wallet)
+          val tx: Either[ValidationError, TransferTransaction] = TransferTransaction.create(assetId: Option[AssetId],
+            sender: PrivateKeyAccount,
+            genRecipient: Account,
+            genAmount(assetId): Long,
+            genTimestamp(): Long,
+            feeAsset: Option[AssetId],
+            genFee(): Long,
+            scorex.utils.randomBytes(TransferTransaction.MaxAttachmentSize): Array[Byte])
           process(tx)
         }
+
 
         def genDelete(assetId: Array[Byte]): Either[ValidationError, BurnTransaction] = {
           val request = BurnRequest(sender.address, Base58.encode(assetId), genAmount(Some(assetId)), genFee())

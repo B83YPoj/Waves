@@ -26,7 +26,7 @@ trait ConsensusModule {
                            (implicit transactionModule: TransactionModule): Seq[Block] = {
     accounts.flatMap { acc =>
       generateNextBlock(acc) match {
-        case Some(b) => b +: (1 to 150).flatMap(i => generateNextBlock(acc))
+        case Some(b) => b +: (1 to 50).flatMap(i => generateNextBlock(acc))
         case None => Seq()
       }
     }

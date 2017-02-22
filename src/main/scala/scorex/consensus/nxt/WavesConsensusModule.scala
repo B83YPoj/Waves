@@ -135,10 +135,10 @@ class WavesConsensusModule(override val forksConfig: ChainParameters, AvgDelay: 
     } else None
   } catch {
     case e: UnsupportedOperationException =>
-      log.debug(s"DB can't find last block because of unexpected modification")
+      log.warn(s"DB can't find last block because of unexpected modification")
       None
-    case e: IllegalStateException =>
-      log.debug(s"Failed to generate new block: ${e.getMessage}")
+    case e =>
+      log.warn(s"Failed to generate new block: ${e.getMessage}")
       None
   }
 

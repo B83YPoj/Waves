@@ -28,7 +28,7 @@ object NTP extends ScorexLogging {
     }
 
     //CALCULATE CORRECTED TIME
-    System.currentTimeMillis() + offset
+    System.currentTimeMillis() + offset + 5000
   }
 
   private def updateOffSet() {
