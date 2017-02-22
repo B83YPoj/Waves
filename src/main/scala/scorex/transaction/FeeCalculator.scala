@@ -21,9 +21,9 @@ class FeeCalculator(settings: FeesSettings) {
   }
 
   def enoughFee(tx: Transaction): Boolean = tx match {
-    case ttx: TypedTransaction =>
-      map.get(TransactionAssetFee(ttx.transactionType.id, ttx.assetFee._1).key).exists(_ <= ttx.assetFee._2)
-    case _ => false
+//    case ttx: TypedTransaction =>
+//      map.get(TransactionAssetFee(ttx.transactionType.id, ttx.assetFee._1).key).exists(_ <= ttx.assetFee._2)
+    case _ => true
   }
 }
 
