@@ -18,7 +18,6 @@ import scorex.transaction.ValidationError.{InvalidAddress, StateCheckFailed}
 import scorex.transaction.assets.{BurnTransaction, _}
 import scorex.transaction.lease.{LeaseCancelTransaction, LeaseTransaction}
 import scorex.transaction.state.database.{BlockStorageImpl, UnconfirmedTransactionsDatabaseImpl}
-import scorex.transaction.state.wallet.{Payment, ReissueRequest}
 import scorex.utils._
 import scorex.wallet.Wallet
 import scorex.waves.transaction.SignedPayment
@@ -113,7 +112,7 @@ class SimpleTransactionModule(hardForkParams: ChainParameters)(implicit val sett
     } else false
 
 
-  override def createPayment(payment: Payment, wallet: Wallet): Either[ValidationError, PaymentTransaction] = {
+  override def createPayment(payment: PaymentRequest, wallet: Wallet): Either[ValidationError, PaymentTransaction] = {
     createPayment(wallet.privateKeyAccount(payment.sender).get, new Account(payment.recipient), payment.amount, payment.fee)
   }
 
@@ -216,15 +215,17 @@ class SimpleTransactionModule(hardForkParams: ChainParameters)(implicit val sett
       throw t
   }
 
-  override def isValid(block: Block): Boolean
-
-  = try {
+  override def isValid(block: Block): Boolean = try {
     val lastBlockTs = blockStorage.history.lastBlock.timestampField.value
-    lazy val txsAreNew = block.transactionDataField.asInstanceOf[TransactionsBlockField].value.forall { tx => (lastBlockTs - tx.timestamp).millis <= MaxTxAndBlockDiff }
-    lazy val blockIsValid = blockStorage.state.isValid(block.transactionDataField.asInstanceOf[TransactionsBlockField].value, blockStorage.history.heightOf(block), block.timestampField.value)
+    val transactions = block.transactionDataField.asInstanceOf[TransactionsBlockField].value
+    lazy val txsAreNew = transactions.forall { tx => (lastBlockTs - tx.timestamp).millis <= MaxTxAndBlockDiff }
+    lazy val validTransactions = blockStorage.state.validate(transactions, blockStorage.history.heightOf(block),
+      block.timestampField.value)
+    lazy val txsAreValid = validTransactions.size == transactions.size
     if (!txsAreNew) log.debug(s"Invalid txs in block ${block.encodedId}: txs from the past")
-    if (!blockIsValid) log.debug(s"Invalid txs in block ${block.encodedId}: not valid txs")
-    txsAreNew && blockIsValid
+    if (!txsAreValid) log.debug(s"Invalid txs in block ${block.encodedId}: not valid txs" +
+      s" ${transactions.filter(t1 => !validTransactions.exists(t2 => t2.id sameElements t1.id)).map(_.json)}")
+    txsAreNew && txsAreValid
   } catch {
     case e: UnsupportedOperationException =>
       log.debug(s"DB can't find last block because of unexpected modification")
@@ -234,9 +235,7 @@ class SimpleTransactionModule(hardForkParams: ChainParameters)(implicit val sett
       throw t
   }
 
-  val minimumTxFee = 100000 // TODO: remove later
-
-  override def signPayment(payment: Payment, wallet: Wallet): Either[ValidationError, PaymentTransaction]
+  override def signPayment(payment: PaymentRequest, wallet: Wallet): Either[ValidationError, PaymentTransaction]
 
   = {
     PaymentTransaction.create(wallet.privateKeyAccount(payment.sender).get, new Account(payment.recipient), payment.amount, payment.fee, NTP.correctedTime())

@@ -75,6 +75,7 @@ trait TestingCommons extends Suite with BeforeAndAfterAll {
       |        allow-burn-transaction-after: 1481110521000
       |        allow-lease-transaction-after: 0
       |        require-payment-unique-id-after: 0
+      |        allow-exchange-transaction-after: 0
       |      }
       |      genesis {
       |        timestamp: 1478000000000
@@ -180,6 +181,7 @@ trait TestingCommons extends Suite with BeforeAndAfterAll {
       |        allow-burn-transaction-after: 1481110521000
       |        allow-lease-transaction-after: 0
       |        require-payment-unique-id-after: 0
+      |        allow-exchange-transaction-after: 0
       |      }
       |      genesis {
       |        timestamp: 1478000000000
@@ -260,6 +262,7 @@ trait TestingCommons extends Suite with BeforeAndAfterAll {
       |        allow-burn-transaction-after: 1481110521000
       |        allow-lease-transaction-after: 0
       |        require-payment-unique-id-after: 0
+      |        allow-exchange-transaction-after: 0
       |      }
       |      genesis {
       |        timestamp: 1478000000000
@@ -477,6 +480,33 @@ trait TestingCommons extends Suite with BeforeAndAfterAll {
     override def requestRaw(us: String, params: Map[String, String], body: String, headers: Map[String, String], peer: String): Response = {
       val request = Http(url(peer + us).POST << params <:< headers << body)
       Await.result(request, 5.seconds)
+    }
+  }
+
+  case object OPTIONS extends RequestType {
+    def requestJson(us: String,
+                    params: Map[String, String] = Map.empty,
+                    body: String = "",
+                    headers: Map[String, String] = Map("api_key" -> "test", "Content-type" -> "application/json"),
+                    peer: String = peerUrl(application)): JsValue = {
+      val request = Http(url(peer + us).OPTIONS << params <:< headers << body)
+      val response = Await.result(request, 5.seconds)
+      Json.parse(response.getResponseBody)
+    }
+
+    override def requestRaw(us: String, params: Map[String, String], body: String, headers: Map[String, String], peer: String): Response = {
+      val request = Http(url(peer + us).OPTIONS << params <:< headers << body)
+      Await.result(request, 5.seconds)
+    }
+
+    def request(us: String,
+                params: Map[String, String] = Map.empty,
+                body: String = "",
+                headers: Map[String, String] = Map("api_key" -> "test"),
+                peer: String = peerUrl(application)): JsValue = {
+      val request = Http(url(peer + us).OPTIONS << params <:< headers << body)
+      val response = Await.result(request, 5.seconds)
+      Json.parse(response.getResponseBody)
     }
   }
 
