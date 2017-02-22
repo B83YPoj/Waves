@@ -199,7 +199,7 @@ object Application extends ScorexLogging {
                   println("!! l:" + genLease().map(_.json))
                 }
                 state.accountTransactions(sender, 1000) foreach {
-                  case l: LeaseTransaction => println("!! lc:" + genLeaseCancel(l.id).map(_.json))
+                  case l: LeaseTransaction if Random.nextBoolean() => println("!! lc:" + genLeaseCancel(l.id).map(_.json))
                   case _ =>
                 }
 
